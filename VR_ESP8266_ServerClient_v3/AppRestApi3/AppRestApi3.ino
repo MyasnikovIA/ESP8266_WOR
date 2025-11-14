@@ -22,10 +22,11 @@ struct Settings {
   bool settings_valid = false;
 };
 
-// Структура для хранения атрибутов подключенных устройств
-struct DeviceAttributes {
+// Структура для хранения информации о подключенных устройствах
+struct DeviceInfo {
   char mac[18]; // MAC адрес устройства
-  char attributes[512]; // JSON атрибуты
+  char name[32]; // Имя устройства
+  char comment[128]; // Комментарий к устройству
   bool valid = false;
 };
 
@@ -34,10 +35,10 @@ ESP8266WebServer server(80);
 WiFiClient wifiClient;
 
 // Адреса EEPROM
-const int EEPROM_SIZE = 4096; // Увеличиваем размер для хранения атрибутов устройств
+const int EEPROM_SIZE = 4096;
 const int SETTINGS_ADDR = 0;
-const int DEVICE_ATTR_ADDR = 512; // Адрес начала хранения атрибутов устройств
-const int MAX_DEVICES = 10; // Максимальное количество устройств для хранения атрибутов
+const int DEVICE_INFO_ADDR = 512; // Адрес начала хранения информации об устройствах
+const int MAX_DEVICES = 20; // Максимальное количество устройств для хранения информации
 
 // Переменные для сканирования WiFi
 String wifiNetworks = "[]";
@@ -66,6 +67,7 @@ void handleDeviceRegister();
 void handleDeviceUpdate();
 void handleGetConnectedDevicesAPI();
 void handleGetWiFiStatus();
+void handleGetDeviceSettingsAPI();
 void scanWiFiNetworks();
 String getConnectedDevicesJSON();
 String mac2str(const uint8_t* mac);
@@ -76,9 +78,10 @@ void handleWiFiClient();
 void sendDeviceDataToGateway();
 void setupWebServer();
 void applySettingsChanges();
-void saveDeviceAttributes(const String& mac, const String& attributes);
-String loadDeviceAttributes(const String& mac);
-void clearDeviceAttributes();
+void saveDeviceInfo(const String& mac, const String& name, const String& comment);
+DeviceInfo loadDeviceInfo(const String& mac);
+void clearDeviceInfo();
+void updateDeviceInfo(const String& mac, const String& name, const String& comment);
 
 void setup() {
   Serial.begin(115200);
@@ -227,6 +230,7 @@ void setupWebServer() {
   server.on("/api/connected-devices", HTTP_GET, handleGetConnectedDevices);
   server.on("/api/device/update", HTTP_POST, handleUpdateDevice);
   server.on("/api/clear-settings", HTTP_POST, handleClearSettings);
+  server.on("/api/device-settings", HTTP_GET, handleGetDeviceSettingsAPI);
   
   server.on("/device/register", HTTP_POST, handleDeviceRegister);
   server.on("/device/update", HTTP_POST, handleDeviceUpdate);
@@ -265,7 +269,6 @@ void sendHTMLChunked() {
             // Глобальные переменные
             let attributes = [];
             let modalAttributes = [];
-            let currentDeviceMac = '';
     
             // Основные функции
             function openTab(tabName) {
@@ -427,28 +430,12 @@ void sendHTMLChunked() {
             row.innerHTML = `
                 <input type="text" placeholder="Key" value="${key}" onchange="updateAttribute(${index}, 'key', this.value)">
                 <input type="text" placeholder="Value" value="${value}" onchange="updateAttribute(${index}, 'value', this.value)">
-                <button type="button" onclick="removeAttribute(${index})">Remove</button>
+                <button type="button" onclick="removeAttributeRow(${index})">Remove</button>
             `;
             
             container.appendChild(row);
         }
 
-        function addModalAttribute(key = '', value = '') {
-            const container = document.getElementById('modalAttributesContainer');
-            const index = modalAttributes.length;
-            
-            modalAttributes.push({key, value});
-            
-            const row = document.createElement('div');
-            row.className = 'attribute-row';
-            row.innerHTML = `
-                <input type="text" placeholder="Key" value="${key}" onchange="updateModalAttribute(${index}, 'key', this.value)">
-                <input type="text" placeholder="Value" value="${value}" onchange="updateModalAttribute(${index}, 'value', this.value)">
-                <button type="button" onclick="removeModalAttribute(${index})">Remove</button>
-            `;
-            
-            container.appendChild(row);
-        }
 
         function addAttributeField(key, value) {
             const container = document.getElementById('attributesContainer');
@@ -459,7 +446,7 @@ void sendHTMLChunked() {
             row.innerHTML = `
                 <input type="text" placeholder="Key" value="${key}" onchange="updateAttribute(${index}, 'key', this.value)">
                 <input type="text" placeholder="Value" value="${value}" onchange="updateAttribute(${index}, 'value', this.value)">
-                <button type="button" onclick="removeAttribute(${index})">Remove</button>
+                <button type="button" onclick="removeAttributeRow(${index})">Remove</button>
             `;
             
             container.appendChild(row);
@@ -477,24 +464,13 @@ void sendHTMLChunked() {
             }
         }
 
-        function removeAttribute(index) {
+        function removeAttributeRow(index) {
             attributes.splice(index, 1);
             renderAttributes();
         }
 
         function removeModalAttribute(index) {
-            if (modalAttributes[index]) {
-                // Находим родительский элемент и удаляем его
-                const container = document.getElementById('modalAttributesContainer');
-                const rows = container.getElementsByClassName('attribute-row');
-                if (rows[index]) {
-                    container.removeChild(rows[index]);
-                }
-                // Удаляем из массива
-                modalAttributes.splice(index, 1);
-                // Перерисовываем с правильными индексами
-                renderModalAttributes();
-            }
+            modalAttributes.splice(index, 1);
         }
 
         function renderAttributes() {
@@ -506,21 +482,6 @@ void sendHTMLChunked() {
             });
         }
 
-        function renderModalAttributes() {
-            const container = document.getElementById('modalAttributesContainer');
-            container.innerHTML = '';
-            
-            modalAttributes.forEach((attr, index) => {
-                const row = document.createElement('div');
-                row.className = 'attribute-row';
-                row.innerHTML = `
-                    <input type="text" placeholder="Key" value="${attr.key}" onchange="updateModalAttribute(${index}, 'key', this.value)">
-                    <input type="text" placeholder="Value" value="${attr.value}" onchange="updateModalAttribute(${index}, 'value', this.value)">
-                    <button type="button" onclick="removeModalAttribute(${index})">Remove</button>
-                `;
-                container.appendChild(row);
-            });
-        }
         let devicesConnect = [];
         // Функции управления
         function clearSettings() {
@@ -549,36 +510,11 @@ void sendHTMLChunked() {
             const mac = device.mac || ''; 
             const name = device.name || ''; 
             const comment = device.comment || ''; 
-            const attributesJson = device.attributes || '{}';
-            
-            // Сохраняем MAC адрес текущего устройства
-            currentDeviceMac = mac;
             
             document.getElementById('modal_ip').value = ip;
             document.getElementById('modal_mac').value = mac;
             document.getElementById('modal_name').value = name || '';
             document.getElementById('modal_comment').value = comment || '';
-            
-            modalAttributes = [];
-            const modalContainer = document.getElementById('modalAttributesContainer');
-            modalContainer.innerHTML = '';
-            
-            try {
-                if (attributesJson && attributesJson !== '{}') {
-                    const attrs = JSON.parse(attributesJson);
-                    for (const [key, value] of Object.entries(attrs)) {
-                        modalAttributes.push({key, value});
-                        addModalAttribute(key, value);
-                    }
-                }
-            } catch (e) {
-                console.error('Error parsing modal attributes:', e);
-            }
-            
-            if (modalAttributes.length === 0) {
-                addModalAttribute();
-            }
-            
             document.getElementById('deviceModal').style.display = 'block';
         }
 )rawliteral");
@@ -608,6 +544,9 @@ void sendHTMLChunked() {
               const nameCell = document.createElement('td');
               nameCell.textContent = device.name || '';
               
+              const commentCell = document.createElement('td');
+              commentCell.textContent = device.comment || '';
+              
               const actionCell = document.createElement('td');
               
               // Создаем кнопку через строку с динамической функцией
@@ -617,6 +556,7 @@ void sendHTMLChunked() {
               row.appendChild(ipCell);
               row.appendChild(macCell);
               row.appendChild(nameCell);
+              row.appendChild(commentCell);
               row.appendChild(actionCell);
               
               tbody.appendChild(row);
@@ -725,19 +665,11 @@ void sendHTMLChunked() {
                 deviceInfoForm.addEventListener('submit', function(e) {
                     e.preventDefault();
                     
-                    const modalAttributesObj = {};
-                    modalAttributes.forEach(attr => {
-                        if (attr.key && attr.key.trim() !== '') {
-                            modalAttributesObj[attr.key] = attr.value;
-                        }
-                    });
-                    
                     const formData = {
                         ip: document.getElementById('modal_ip').value,
                         mac: document.getElementById('modal_mac').value,
                         name: document.getElementById('modal_name').value,
-                        comment: document.getElementById('modal_comment').value,
-                        attributes: JSON.stringify(modalAttributesObj)
+                        comment: document.getElementById('modal_comment').value
                     };
                     
                     console.log('Sending device update:', formData);
@@ -799,7 +731,7 @@ void sendHTMLChunked() {
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             padding: 20px;
@@ -1036,7 +968,7 @@ void sendHTMLChunked() {
                     <div class="section">
                         <div class="section-title">System Attributes</div>
                         <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                            Add system attributes as key-value pairs for this access point
+                            Add system attributes as key-value pairs
                         </p>
                         <div class="attributes-container" id="attributesContainer"></div>
                         <button type="button" onclick="addAttribute()" style="background: #17a2b8;">Add Attribute</button>
@@ -1066,6 +998,7 @@ void sendHTMLChunked() {
                             <th>IP Address</th>
                             <th>MAC Address</th>
                             <th>Device Name</th>
+                            <th>Comment</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -1088,12 +1021,6 @@ void sendHTMLChunked() {
                 
                 <label for="modal_comment">Comment:</label>
                 <textarea id="modal_comment" name="comment" rows="3"></textarea>
-                
-                <div class="section">
-                    <div class="section-title">System Attributes</div>
-                    <div class="attributes-container" id="modalAttributesContainer"></div>
-                    <button type="button" onclick="addModalAttribute()" style="background: #17a2b8;">Add Attribute</button>
-                </div>
                 
                 <button type="submit">Save</button>
             </form>
@@ -1275,11 +1202,13 @@ void handleUpdateDevice() {
   }
   
   // Сохраняем информацию об устройстве по MAC адресу
-  if (doc.containsKey("mac") && doc.containsKey("attributes")) {
+  if (doc.containsKey("mac") && doc.containsKey("name") && doc.containsKey("comment")) {
     String mac = doc["mac"].as<String>();
-    String attributes = doc["attributes"].as<String>();
-    saveDeviceAttributes(mac, attributes);
-    Serial.println("Saved attributes for device MAC: " + mac);
+    String name = doc["name"].as<String>();
+    String comment = doc["comment"].as<String>();
+    
+    updateDeviceInfo(mac, name, comment);
+    Serial.println("Updated device info for MAC: " + mac + ", Name: " + name + ", Comment: " + comment);
   }
   
   server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -1297,8 +1226,8 @@ void handleClearSettings() {
   settings.sta_enabled = false;
   settings.settings_valid = true;
   
-  // Очищаем атрибуты устройств
-  clearDeviceAttributes();
+  // Очищаем информацию об устройствах
+  clearDeviceInfo();
   
   saveSettings();
   needsWiFiRestart = true;
@@ -1353,6 +1282,51 @@ void handleGetConnectedDevicesAPI() {
   server.send(200, "application/json", getConnectedDevicesJSON());
 }
 
+// Новый API endpoint для получения настроек устройства
+void handleGetDeviceSettingsAPI() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  
+  if (server.method() == HTTP_OPTIONS) {
+    server.send(200);
+    return;
+  }
+  
+  // Получаем параметр MAC из запроса
+  String mac = server.arg("mac");
+  
+  DynamicJsonDocument doc(1024);
+  
+  if (mac.length() > 0) {
+    // Загружаем информацию об устройстве по MAC адресу
+    DeviceInfo deviceInfo = loadDeviceInfo(mac);
+    
+    if (deviceInfo.valid) {
+      doc["device_name"] = deviceInfo.name;
+      doc["device_comment"] = deviceInfo.comment;
+    } else {
+      // Если информации об устройстве нет, используем общие настройки
+      doc["device_name"] = settings.device_name;
+      doc["device_comment"] = settings.device_comment;
+    }
+  } else {
+    // Если MAC не указан, возвращаем общие настройки
+    doc["device_name"] = settings.device_name;
+    doc["device_comment"] = settings.device_comment;
+  }
+  
+  // System Attributes всегда возвращаем из общих настроек
+  DynamicJsonDocument attrDoc(512);
+  deserializeJson(attrDoc, settings.json_attributes);
+  doc["system_attributes"] = attrDoc.as<JsonObject>();
+  
+  String response;
+  serializeJson(doc, response);
+  
+  server.send(200, "application/json", response);
+}
+
 void scanWiFiNetworks() {
   int n = WiFi.scanNetworks();
   DynamicJsonDocument doc(4096);
@@ -1372,7 +1346,7 @@ void scanWiFiNetworks() {
 }
 
 String getConnectedDevicesJSON() {
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(2048);
   JsonArray devices = doc.to<JsonArray>();
   
   struct station_info *station = wifi_softap_get_station_info();
@@ -1382,17 +1356,19 @@ String getConnectedDevicesJSON() {
     
     device["ip"] = IPAddress(station->ip.addr).toString();
     device["mac"] = mac;
-    device["name"] = settings.device_name;
-    device["comment"] = settings.device_comment;
     
-    // Загружаем сохраненные атрибуты для этого устройства по MAC адресу
-    String savedAttributes = loadDeviceAttributes(mac);
-    if (savedAttributes.length() > 0) {
-      device["attributes"] = savedAttributes;
+    // Загружаем сохраненную информацию об устройстве по MAC адресу
+    DeviceInfo deviceInfo = loadDeviceInfo(mac);
+    if (deviceInfo.valid) {
+      device["name"] = deviceInfo.name;
+      device["comment"] = deviceInfo.comment;
     } else {
-      // Если нет сохраненных атрибутов, используем пустой объект
-      device["attributes"] = "{}";
+      // Если информации нет, используем общие настройки
+      device["name"] = settings.device_name;
+      device["comment"] = settings.device_comment;
     }
+    
+    device["attributes"] = settings.json_attributes;
     
     station = STAILQ_NEXT(station, next);
   }
@@ -1442,62 +1418,70 @@ void saveSettings() {
   }
 }
 
-// Функции для работы с атрибутами устройств
-void saveDeviceAttributes(const String& mac, const String& attributes) {
-  DeviceAttributes deviceAttr;
-  int addr = DEVICE_ATTR_ADDR;
+// Функции для работы с информацией об устройствах
+void saveDeviceInfo(const String& mac, const String& name, const String& comment) {
+  DeviceInfo deviceInfo;
+  int addr = DEVICE_INFO_ADDR;
   
   // Ищем существующую запись или свободное место
   for (int i = 0; i < MAX_DEVICES; i++) {
-    EEPROM.get(addr, deviceAttr);
+    EEPROM.get(addr, deviceInfo);
     
-    if (!deviceAttr.valid || strcmp(deviceAttr.mac, mac.c_str()) == 0) {
+    if (!deviceInfo.valid || strcmp(deviceInfo.mac, mac.c_str()) == 0) {
       // Нашли свободное место или существующую запись
-      strlcpy(deviceAttr.mac, mac.c_str(), sizeof(deviceAttr.mac));
-      strlcpy(deviceAttr.attributes, attributes.c_str(), sizeof(deviceAttr.attributes));
-      deviceAttr.valid = true;
+      strlcpy(deviceInfo.mac, mac.c_str(), sizeof(deviceInfo.mac));
+      strlcpy(deviceInfo.name, name.c_str(), sizeof(deviceInfo.name));
+      strlcpy(deviceInfo.comment, comment.c_str(), sizeof(deviceInfo.comment));
+      deviceInfo.valid = true;
       
-      EEPROM.put(addr, deviceAttr);
+      EEPROM.put(addr, deviceInfo);
       EEPROM.commit();
       
-      Serial.println("Saved device attributes for MAC: " + mac);
+      Serial.println("Saved device info for MAC: " + mac);
       return;
     }
     
-    addr += sizeof(DeviceAttributes);
+    addr += sizeof(DeviceInfo);
   }
   
-  Serial.println("No free space to save device attributes for MAC: " + mac);
+  Serial.println("No free space to save device info for MAC: " + mac);
 }
 
-String loadDeviceAttributes(const String& mac) {
-  DeviceAttributes deviceAttr;
-  int addr = DEVICE_ATTR_ADDR;
+DeviceInfo loadDeviceInfo(const String& mac) {
+  DeviceInfo deviceInfo;
+  int addr = DEVICE_INFO_ADDR;
   
   for (int i = 0; i < MAX_DEVICES; i++) {
-    EEPROM.get(addr, deviceAttr);
+    EEPROM.get(addr, deviceInfo);
     
-    if (deviceAttr.valid && strcmp(deviceAttr.mac, mac.c_str()) == 0) {
-      Serial.println("Loaded device attributes for MAC: " + mac);
-      return String(deviceAttr.attributes);
+    if (deviceInfo.valid && strcmp(deviceInfo.mac, mac.c_str()) == 0) {
+      Serial.println("Loaded device info for MAC: " + mac);
+      return deviceInfo;
     }
     
-    addr += sizeof(DeviceAttributes);
+    addr += sizeof(DeviceInfo);
   }
   
-  return "";
+  // Возвращаем пустую структуру, если устройство не найдено
+  DeviceInfo empty;
+  empty.valid = false;
+  return empty;
 }
 
-void clearDeviceAttributes() {
-  DeviceAttributes deviceAttr;
-  int addr = DEVICE_ATTR_ADDR;
+void updateDeviceInfo(const String& mac, const String& name, const String& comment) {
+  saveDeviceInfo(mac, name, comment);
+}
+
+void clearDeviceInfo() {
+  DeviceInfo deviceInfo;
+  int addr = DEVICE_INFO_ADDR;
   
   for (int i = 0; i < MAX_DEVICES; i++) {
-    memset(&deviceAttr, 0, sizeof(DeviceAttributes));
-    EEPROM.put(addr, deviceAttr);
-    addr += sizeof(DeviceAttributes);
+    memset(&deviceInfo, 0, sizeof(DeviceInfo));
+    EEPROM.put(addr, deviceInfo);
+    addr += sizeof(DeviceInfo);
   }
   
   EEPROM.commit();
-  Serial.println("Cleared all device attributes");
+  Serial.println("Cleared all device info");
 }
