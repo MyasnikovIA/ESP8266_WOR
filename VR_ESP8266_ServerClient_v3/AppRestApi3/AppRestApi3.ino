@@ -22,13 +22,22 @@ struct Settings {
   bool settings_valid = false;
 };
 
+// Структура для хранения атрибутов подключенных устройств
+struct DeviceAttributes {
+  char mac[18]; // MAC адрес устройства
+  char attributes[512]; // JSON атрибуты
+  bool valid = false;
+};
+
 Settings settings;
 ESP8266WebServer server(80);
 WiFiClient wifiClient;
 
 // Адреса EEPROM
-const int EEPROM_SIZE = 1024;
+const int EEPROM_SIZE = 4096; // Увеличиваем размер для хранения атрибутов устройств
 const int SETTINGS_ADDR = 0;
+const int DEVICE_ATTR_ADDR = 512; // Адрес начала хранения атрибутов устройств
+const int MAX_DEVICES = 10; // Максимальное количество устройств для хранения атрибутов
 
 // Переменные для сканирования WiFi
 String wifiNetworks = "[]";
@@ -49,6 +58,7 @@ void handleGetSettings();
 void handlePostSettings();
 void handleWiFiScan();
 void handleWiFiConnect();
+void handleWiFiDisconnect();
 void handleGetConnectedDevices();
 void handleUpdateDevice();
 void handleClearSettings();
@@ -66,6 +76,9 @@ void handleWiFiClient();
 void sendDeviceDataToGateway();
 void setupWebServer();
 void applySettingsChanges();
+void saveDeviceAttributes(const String& mac, const String& attributes);
+String loadDeviceAttributes(const String& mac);
+void clearDeviceAttributes();
 
 void setup() {
   Serial.begin(115200);
@@ -209,6 +222,7 @@ void setupWebServer() {
   server.on("/api/settings", HTTP_POST, handlePostSettings);
   server.on("/api/wifi/scan", HTTP_GET, handleWiFiScan);
   server.on("/api/wifi/connect", HTTP_POST, handleWiFiConnect);
+  server.on("/api/wifi/disconnect", HTTP_POST, handleWiFiDisconnect);
   server.on("/api/wifi/status", HTTP_GET, handleGetWiFiStatus);
   server.on("/api/connected-devices", HTTP_GET, handleGetConnectedDevices);
   server.on("/api/device/update", HTTP_POST, handleUpdateDevice);
@@ -239,7 +253,6 @@ void sendHTMLChunked() {
   client.println("Connection: close");
   client.println();
 
-
   // Send HTML in chunks
   client.print(R"rawliteral(
     <!DOCTYPE html>
@@ -252,6 +265,7 @@ void sendHTMLChunked() {
             // Глобальные переменные
             let attributes = [];
             let modalAttributes = [];
+            let currentDeviceMac = '';
     
             // Основные функции
             function openTab(tabName) {
@@ -267,7 +281,6 @@ void sendHTMLChunked() {
                 
                 document.getElementById(tabName).classList.add('active');
                 event.currentTarget.classList.add('active');
-                debugger
                 if (tabName === 'wifi-scan') {
                     loadWiFiStatus();
                 } 
@@ -322,6 +335,8 @@ void sendHTMLChunked() {
                     .then(response => response.json())
                     .then(data => {
                         const statusDiv = document.getElementById('wifiStatus');
+                        const disconnectBtn = document.getElementById('disconnectBtn');
+                        
                         if (data.status === 'connected') {
                             statusDiv.innerHTML = `
                                 <div class="wifi-status-connected">Status: Connected</div>
@@ -334,11 +349,13 @@ void sendHTMLChunked() {
                                     <p><strong>Signal Strength:</strong> ${data.rssi || 'N/A'} dBm</p>
                                 </div>
                             `;
+                            disconnectBtn.style.display = 'inline-block';
                         } else {
                             statusDiv.innerHTML = `
                                 <div class="wifi-status-disconnected">Status: Disconnected</div>
                                 <p>Not connected to any WiFi network</p>
                             `;
+                            disconnectBtn.style.display = 'none';
                         }
                     })
                     .catch(error => {
@@ -381,6 +398,23 @@ void sendHTMLChunked() {
 )rawliteral");
 
   client.print(R"rawliteral(
+            function disconnectWiFi() {
+                if (confirm('Are you sure you want to disconnect from WiFi?')) {
+                    fetch('/api/wifi/disconnect', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'}
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('WiFi disconnected successfully!');
+                        setTimeout(loadWiFiStatus, 1000);
+                    })
+                    .catch(error => {
+                        alert('Error disconnecting WiFi: ' + error);
+                    });
+                }
+            }
+
         // Функции для атрибутов
         function addAttribute(key = '', value = '') {
             const container = document.getElementById('attributesContainer');
@@ -449,8 +483,18 @@ void sendHTMLChunked() {
         }
 
         function removeModalAttribute(index) {
-            modalAttributes.splice(index, 1);
-            renderModalAttributes();
+            if (modalAttributes[index]) {
+                // Находим родительский элемент и удаляем его
+                const container = document.getElementById('modalAttributesContainer');
+                const rows = container.getElementsByClassName('attribute-row');
+                if (rows[index]) {
+                    container.removeChild(rows[index]);
+                }
+                // Удаляем из массива
+                modalAttributes.splice(index, 1);
+                // Перерисовываем с правильными индексами
+                renderModalAttributes();
+            }
         }
 
         function renderAttributes() {
@@ -467,7 +511,14 @@ void sendHTMLChunked() {
             container.innerHTML = '';
             
             modalAttributes.forEach((attr, index) => {
-                addModalAttribute(attr.key, attr.value);
+                const row = document.createElement('div');
+                row.className = 'attribute-row';
+                row.innerHTML = `
+                    <input type="text" placeholder="Key" value="${attr.key}" onchange="updateModalAttribute(${index}, 'key', this.value)">
+                    <input type="text" placeholder="Value" value="${attr.value}" onchange="updateModalAttribute(${index}, 'value', this.value)">
+                    <button type="button" onclick="removeModalAttribute(${index})">Remove</button>
+                `;
+                container.appendChild(row);
             });
         }
         let devicesConnect = [];
@@ -493,14 +544,16 @@ void sendHTMLChunked() {
         }
 
         function showDeviceInfo(ind) {
-            debugger
             const device = devicesConnect[ind];
             const ip = device.ip || ''; 
             const mac = device.mac || ''; 
             const name = device.name || ''; 
             const comment = device.comment || ''; 
             const attributesJson = device.attributes || '{}';
-            // ip, mac, name, comment, attributesJson
+            
+            // Сохраняем MAC адрес текущего устройства
+            currentDeviceMac = mac;
+            
             document.getElementById('modal_ip').value = ip;
             document.getElementById('modal_mac').value = mac;
             document.getElementById('modal_name').value = name || '';
@@ -811,6 +864,12 @@ void sendHTMLChunked() {
         button:hover {
             background: #0056b3;
         }
+        .disconnect-btn {
+            background: #dc3545;
+        }
+        .disconnect-btn:hover {
+            background: #c82333;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -936,6 +995,7 @@ void sendHTMLChunked() {
                         <p>Loading WiFi status...</p>
                     </div>
                     <button onclick="loadWiFiStatus()">Refresh Status</button>
+                    <button id="disconnectBtn" class="disconnect-btn" onclick="disconnectWiFi()" style="display: none;">Disconnect WiFi</button>
                 </div>
                 
                 <div class="section">
@@ -976,7 +1036,7 @@ void sendHTMLChunked() {
                     <div class="section">
                         <div class="section-title">System Attributes</div>
                         <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                            Add system attributes as key-value pairs
+                            Add system attributes as key-value pairs for this access point
                         </p>
                         <div class="attributes-container" id="attributesContainer"></div>
                         <button type="button" onclick="addAttribute()" style="background: #17a2b8;">Add Attribute</button>
@@ -1181,6 +1241,19 @@ void handleWiFiConnect() {
   }
 }
 
+void handleWiFiDisconnect() {
+  // Отключаем STA режим
+  settings.sta_enabled = false;
+  strcpy(settings.sta_ssid, "");
+  strcpy(settings.sta_password, "");
+  
+  saveSettings();
+  needsWiFiRestart = true;
+  
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", "{\"status\":\"disconnected\"}");
+}
+
 void handleGetConnectedDevices() {
   String json = getConnectedDevicesJSON();
   server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -1201,26 +1274,13 @@ void handleUpdateDevice() {
     return;
   }
   
-  // Сохраняем информацию об устройстве в настройки
-  if (doc.containsKey("name")) {
-    strlcpy(settings.device_name, doc["name"], sizeof(settings.device_name));
-    Serial.println("Updated device name: " + String(settings.device_name));
+  // Сохраняем информацию об устройстве по MAC адресу
+  if (doc.containsKey("mac") && doc.containsKey("attributes")) {
+    String mac = doc["mac"].as<String>();
+    String attributes = doc["attributes"].as<String>();
+    saveDeviceAttributes(mac, attributes);
+    Serial.println("Saved attributes for device MAC: " + mac);
   }
-  
-  if (doc.containsKey("comment")) {
-    strlcpy(settings.device_comment, doc["comment"], sizeof(settings.device_comment));
-    Serial.println("Updated device comment: " + String(settings.device_comment));
-  }
-  
-  if (doc.containsKey("attributes")) {
-    String attributesStr = doc["attributes"].as<String>();
-    if (attributesStr.length() > 0 && attributesStr != "{}") {
-      strlcpy(settings.json_attributes, attributesStr.c_str(), sizeof(settings.json_attributes));
-      Serial.println("Updated device attributes: " + String(settings.json_attributes));
-    }
-  }
-  
-  saveSettings();
   
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", "{\"status\":\"success\"}");
@@ -1236,6 +1296,9 @@ void handleClearSettings() {
   settings.ap_enabled = true;
   settings.sta_enabled = false;
   settings.settings_valid = true;
+  
+  // Очищаем атрибуты устройств
+  clearDeviceAttributes();
   
   saveSettings();
   needsWiFiRestart = true;
@@ -1315,11 +1378,21 @@ String getConnectedDevicesJSON() {
   struct station_info *station = wifi_softap_get_station_info();
   while (station != NULL) {
     JsonObject device = devices.createNestedObject();
+    String mac = mac2str(station->bssid);
+    
     device["ip"] = IPAddress(station->ip.addr).toString();
-    device["mac"] = String(mac2str(station->bssid).c_str());
+    device["mac"] = mac;
     device["name"] = settings.device_name;
     device["comment"] = settings.device_comment;
-    device["attributes"] = settings.json_attributes;
+    
+    // Загружаем сохраненные атрибуты для этого устройства по MAC адресу
+    String savedAttributes = loadDeviceAttributes(mac);
+    if (savedAttributes.length() > 0) {
+      device["attributes"] = savedAttributes;
+    } else {
+      // Если нет сохраненных атрибутов, используем пустой объект
+      device["attributes"] = "{}";
+    }
     
     station = STAILQ_NEXT(station, next);
   }
@@ -1367,4 +1440,64 @@ void saveSettings() {
   } else {
     Serial.println("Error saving settings to EEPROM");
   }
+}
+
+// Функции для работы с атрибутами устройств
+void saveDeviceAttributes(const String& mac, const String& attributes) {
+  DeviceAttributes deviceAttr;
+  int addr = DEVICE_ATTR_ADDR;
+  
+  // Ищем существующую запись или свободное место
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    EEPROM.get(addr, deviceAttr);
+    
+    if (!deviceAttr.valid || strcmp(deviceAttr.mac, mac.c_str()) == 0) {
+      // Нашли свободное место или существующую запись
+      strlcpy(deviceAttr.mac, mac.c_str(), sizeof(deviceAttr.mac));
+      strlcpy(deviceAttr.attributes, attributes.c_str(), sizeof(deviceAttr.attributes));
+      deviceAttr.valid = true;
+      
+      EEPROM.put(addr, deviceAttr);
+      EEPROM.commit();
+      
+      Serial.println("Saved device attributes for MAC: " + mac);
+      return;
+    }
+    
+    addr += sizeof(DeviceAttributes);
+  }
+  
+  Serial.println("No free space to save device attributes for MAC: " + mac);
+}
+
+String loadDeviceAttributes(const String& mac) {
+  DeviceAttributes deviceAttr;
+  int addr = DEVICE_ATTR_ADDR;
+  
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    EEPROM.get(addr, deviceAttr);
+    
+    if (deviceAttr.valid && strcmp(deviceAttr.mac, mac.c_str()) == 0) {
+      Serial.println("Loaded device attributes for MAC: " + mac);
+      return String(deviceAttr.attributes);
+    }
+    
+    addr += sizeof(DeviceAttributes);
+  }
+  
+  return "";
+}
+
+void clearDeviceAttributes() {
+  DeviceAttributes deviceAttr;
+  int addr = DEVICE_ATTR_ADDR;
+  
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    memset(&deviceAttr, 0, sizeof(DeviceAttributes));
+    EEPROM.put(addr, deviceAttr);
+    addr += sizeof(DeviceAttributes);
+  }
+  
+  EEPROM.commit();
+  Serial.println("Cleared all device attributes");
 }
