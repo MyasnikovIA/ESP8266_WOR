@@ -1193,9 +1193,31 @@ void handlePostSettings() {
 }
 
 void handleWiFiScan() {
-  scanWiFiNetworks();
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.send(200, "application/json", wifiNetworks);
+  WiFiClient client = server.client();
+  
+  // Send HTTP headers
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Access-Control-Allow-Origin: *");
+  client.println("Connection: close");
+  client.println();
+  int n = WiFi.scanNetworks();
+  String jsonString = "[";
+  for (int i = 0; i < n; i++) {
+    if (i > 0) {
+      jsonString += ",";
+    }
+    jsonString += "{";
+    jsonString += "\"ssid\":\"" + WiFi.SSID(i) + "\",";
+    jsonString += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+    jsonString += "\"encryption\":\"" + String((WiFi.encryptionType(i) == ENC_TYPE_NONE) ? "open" : "secured") + "\"";
+    jsonString += "}";
+  }
+  jsonString += "]";
+  wifiNetworks = jsonString;
+  WiFi.scanDelete();
+  client.println(wifiNetworks);
+  client.stop();
 }
 
 void handleGetWiFiStatus() {
