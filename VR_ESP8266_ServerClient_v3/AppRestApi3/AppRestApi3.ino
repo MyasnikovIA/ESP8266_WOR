@@ -271,26 +271,30 @@ void sendHTMLChunked() {
             let modalAttributes = [];
     
             // Основные функции
-            function openTab(tabName) {
-                const tabs = document.getElementsByClassName('tab-content');
-                for (let tab of tabs) {
-                    tab.classList.remove('active');
-                }
-                
-                const buttons = document.getElementsByClassName('tab-button');
-                for (let button of buttons) {
-                    button.classList.remove('active');
-                }
-                
-                document.getElementById(tabName).classList.add('active');
-                event.currentTarget.classList.add('active');
-                if (tabName === 'wifi-scan') {
-                    loadWiFiStatus();
-                } 
-                if (tabName === 'status') {
-                    window.loadConnectedDevices2();
-                }
-            }
+      function openTab(tabName) {
+        const tabs = document.getElementsByClassName('tab-content');
+        for (let tab of tabs) {
+          tab.classList.remove('active');
+        }
+        
+        const buttons = document.getElementsByClassName('tab-button');
+        for (let button of buttons) {
+          button.classList.remove('active');
+        }
+        
+        document.getElementById(tabName).classList.add('active');
+        event.currentTarget.classList.add('active');
+        
+        if (tabName === 'wifi-scan') {
+          loadWiFiStatus();
+        } 
+        if (tabName === 'status') {
+          window.loadConnectedDevices2();
+        }
+        if (tabName === 'device-settings') {
+          loadDeviceSettings();
+        }
+      }
     
             function populateSubnetSelect() {
                 const select = document.getElementById('subnet');
@@ -708,6 +712,73 @@ void sendHTMLChunked() {
             }
         }
 
+    // Функция для обновления настроек устройства
+    function refreshDeviceSettings() {
+      fetch('/api/device-settings')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Обновляем поля формы
+          document.getElementById('device_name').value = data.device_name || '';
+          document.getElementById('device_comment').value = data.device_comment || '';
+          
+          // Обновляем атрибуты
+          if (data.system_attributes) {
+            attributes = [];
+            const container = document.getElementById('attributesContainer');
+            container.innerHTML = '';
+            
+            for (const [key, value] of Object.entries(data.system_attributes)) {
+              attributes.push({key, value});
+              addAttributeField(key, value);
+            }
+            
+            // Если атрибутов нет, добавляем пустое поле
+            if (attributes.length === 0) {
+              addAttribute();
+            }
+          }
+          
+          alert('Device settings refreshed successfully!');
+        })
+        .catch(error => {
+          console.error('Error refreshing device settings:', error);
+          alert('Error refreshing device settings: ' + error.message);
+        });
+    }
+
+    // Функция для загрузки настроек устройства при открытии вкладки
+    function loadDeviceSettings() {
+      fetch('/api/device-settings')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('device_name').value = data.device_name || '';
+          document.getElementById('device_comment').value = data.device_comment || '';
+          
+          if (data.system_attributes) {
+            attributes = [];
+            const container = document.getElementById('attributesContainer');
+            container.innerHTML = '';
+            
+            for (const [key, value] of Object.entries(data.system_attributes)) {
+              attributes.push({key, value});
+              addAttributeField(key, value);
+            }
+          }
+          
+          // Если атрибутов нет, добавляем пустое поле
+          if (attributes.length === 0) {
+            addAttribute();
+          }
+        })
+        .catch(error => console.error('Error loading device settings:', error));
+    }
+
+
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
@@ -955,29 +1026,30 @@ void sendHTMLChunked() {
             </div>
         </div>
         
-        <div id="device-settings" class="tab-content">
-            <div class="section">
-                <h3 class="black-header">Device Settings</h3>
-                <form id="deviceSettingsForm">
-                    <label for="device_name">Device Name:</label>
-                    <input type="text" id="device_name" name="device_name" required>
-                    
-                    <label for="device_comment">Device Comment:</label>
-                    <textarea id="device_comment" name="device_comment" rows="3"></textarea>
-                    
-                    <div class="section">
-                        <div class="section-title">System Attributes</div>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                            Add system attributes as key-value pairs
-                        </p>
-                        <div class="attributes-container" id="attributesContainer"></div>
-                        <button type="button" onclick="addAttribute()" style="background: #17a2b8;">Add Attribute</button>
-                    </div>
-                    
-                    <button type="submit">Save Device Settings</button>
-                </form>
-            </div>
-        </div>
+    <div id="device-settings" class="tab-content">
+      <div class="section">
+        <h3 class="black-header">Device Settings</h3>
+        <form id="deviceSettingsForm">
+          <label for="device_name">Device Name:</label>
+          <input type="text" id="device_name" name="device_name" required>
+          
+          <label for="device_comment">Device Comment:</label>
+          <textarea id="device_comment" name="device_comment" rows="3"></textarea>
+          
+          <div class="section">
+            <div class="section-title">System Attributes</div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+              Add system attributes as key-value pairs
+            </p>
+            <div class="attributes-container" id="attributesContainer"></div>
+            <button type="button" onclick="addAttribute()" style="background: #17a2b8;">Add Attribute</button>
+          </div>
+          
+          <button type="submit">Save Device Settings</button>
+          <button type="button" onclick="refreshDeviceSettings()" style="background: #28a745;">Refresh Device Settings</button>
+        </form>
+      </div>
+    </div>
         
         <div id="device-management" class="tab-content">
             <div class="section">
@@ -1121,6 +1193,7 @@ void handlePostSettings() {
 }
 
 void handleWiFiScan() {
+  scanWiFiNetworks();
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", wifiNetworks);
 }
