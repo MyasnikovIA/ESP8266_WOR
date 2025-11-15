@@ -15,6 +15,8 @@ struct Settings {
   int subnet = 4;
   bool ap_mode_enabled = true;
   bool client_mode_enabled = false;
+  char sta_ssid[32] = "";
+  char sta_password[32] = "";
 };
 
 // Структура для информации о подключенных устройствах
@@ -84,6 +86,38 @@ void setupWiFi() {
   } else {
     WiFi.mode(WIFI_STA);
   }
+  
+  // Подключаемся к WiFi сети если указаны учетные данные
+  if (settings.client_mode_enabled && strlen(settings.sta_ssid) > 0) {
+    connectToWiFi();
+  }
+}
+
+void connectToWiFi() {
+  if (strlen(settings.sta_ssid) > 0) {
+    Serial.println("Connecting to WiFi: " + String(settings.sta_ssid));
+    WiFi.begin(settings.sta_ssid, settings.sta_password);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      delay(500);
+      Serial.print(".");
+      attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nWiFi connected!");
+      Serial.println("IP address: " + WiFi.localIP().toString());
+    } else {
+      Serial.println("\nFailed to connect to WiFi");
+    }
+  }
+}
+
+void disconnectFromWiFi() {
+  WiFi.disconnect();
+  delay(1000);
+  Serial.println("Disconnected from WiFi");
 }
 
 void setupWebServer() {
@@ -102,6 +136,9 @@ void setupWebServer() {
   server.on("/api/device-info", HTTP_POST, handleApiDeviceInfo);
   server.on("/api/clear-settings", HTTP_POST, handleApiClearSettings);
   server.on("/api/restart", HTTP_POST, handleApiRestart);
+  server.on("/api/wifi-connect", HTTP_POST, handleApiWifiConnect);
+  server.on("/api/wifi-disconnect", HTTP_POST, handleApiWifiDisconnect);
+  server.on("/api/wifi-status", HTTP_GET, handleApiWifiStatus);
   
   server.onNotFound(handleNotFound);
   
@@ -138,7 +175,13 @@ String getHTMLHeader() {
         .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 5px; }
         .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
         .close:hover { color: black; }
-    .tablinks{ color: black; }
+        .wifi-network { border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .wifi-connected { background-color: #e8f5e8; }
+        .wifi-disconnected { background-color: #f5f5f5; }
+        .tablinks{ color: black; }
+        .connection-status { padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
     </style>
 )=====";
 }
@@ -163,6 +206,9 @@ String getJavaScript() {
                 loadConnectedDevices();
             } else if (tabName === 'APSettings') {
                 loadAPSettings();
+            } else if (tabName === 'WiFiScan') {
+                loadWiFiStatus();
+                scanWiFi();
             } else if (tabName === 'DeviceConfig') {
                 loadDeviceConfig();
             } else if (tabName === 'DeviceControl') {
@@ -254,12 +300,86 @@ String getJavaScript() {
             fetch('/api/wifi-scan')
                 .then(response => response.json())
                 .then(data => {
-                    let networks = '<h3>Доступные сети:</h3><ul>';
+                    let networksHTML = '<h3>Доступные сети:</h3>';
                     data.networks.forEach(network => {
-                        networks += `<li>${network.ssid} (Сигнал: ${network.rssi}dBm)</li>`;
+                        const encryption = network.encryption === 7 ? 'Open' : 'Secured';
+                        networksHTML += `
+                            <div class="wifi-network">
+                                <strong>${network.ssid}</strong><br>
+                                Сигнал: ${network.rssi}dBm | Защита: ${encryption}<br>
+                                <input type="password" id="password_${network.ssid.replace(/[^a-zA-Z0-9]/g, '_')}" placeholder="Пароль" style="width: 200px; margin: 5px 0;">
+                                <button onclick="connectToNetwork('${network.ssid}', ${network.encryption})">Подключиться</button>
+                            </div>
+                        `;
                     });
-                    networks += '</ul>';
-                    document.getElementById('wifiNetworks').innerHTML = networks;
+                    document.getElementById('wifiNetworks').innerHTML = networksHTML;
+                });
+        }
+
+        function connectToNetwork(ssid, encryption) {
+            const passwordId = 'password_' + ssid.replace(/[^a-zA-Z0-9]/g, '_');
+            const password = document.getElementById(passwordId).value;
+            
+            if (encryption !== 7 && !password) {
+                alert('Для защищенной сети необходим пароль');
+                return;
+            }
+            
+            const connectionData = {
+                ssid: ssid,
+                password: password
+            };
+            
+            fetch('/api/wifi-connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(connectionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Подключение к сети ' + ssid + ' выполнено');
+                loadWiFiStatus();
+            })
+            .catch(error => {
+                alert('Ошибка подключения к сети');
+            });
+        }
+
+        function disconnectFromWiFi() {
+            if (confirm('Отключиться от текущей WiFi сети?')) {
+                fetch('/api/wifi-disconnect', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Отключено от WiFi сети');
+                        loadWiFiStatus();
+                        scanWiFi();
+                    });
+            }
+        }
+
+        function loadWiFiStatus() {
+            fetch('/api/wifi-status')
+                .then(response => response.json())
+                .then(data => {
+                    let statusHTML = '';
+                    if (data.connected) {
+                        statusHTML = `
+                            <div class="connection-status connected">
+                                <strong>Подключено к WiFi</strong><br>
+                                Сеть: ${data.ssid}<br>
+                                IP: ${data.ip}<br>
+                                Сигнал: ${data.rssi}dBm
+                            </div>
+                            <button onclick="disconnectFromWiFi()" style="background-color: #f44336;">Отключиться от точки доступа</button>
+                        `;
+                    } else {
+                        statusHTML = `
+                            <div class="connection-status disconnected">
+                                <strong>Не подключено к WiFi</strong>
+                            </div>
+                        `;
+                    }
+                    document.getElementById('wifiStatus').innerHTML = statusHTML;
                 });
         }
 
@@ -379,7 +499,9 @@ String getWiFiScanTab() {
   return R"=====(
         <div id="WiFiScan" class="tabcontent">
             <h2>Сканирование WiFi сетей</h2>
+            <div id="wifiStatus"></div>
             <button onclick="scanWiFi()">Сканировать сети</button>
+            <button onclick="loadWiFiStatus()">Обновить статус</button>
             <div id="wifiNetworks"></div>
         </div>
 )=====";
@@ -478,6 +600,7 @@ void handleGetSettings() {
   doc["subnet"] = settings.subnet;
   doc["ap_mode_enabled"] = settings.ap_mode_enabled;
   doc["client_mode_enabled"] = settings.client_mode_enabled;
+  doc["sta_ssid"] = settings.sta_ssid;
   
   String response;
   serializeJson(doc, response);
@@ -516,6 +639,59 @@ void handleApiWifiScan() {
     network["ssid"] = WiFi.SSID(i);
     network["rssi"] = WiFi.RSSI(i);
     network["encryption"] = WiFi.encryptionType(i);
+  }
+  
+  String response;
+  serializeJson(doc, response);
+  
+  server.send(200, "application/json", response);
+}
+
+void handleApiWifiConnect() {
+  if (server.hasArg("plain")) {
+    DynamicJsonDocument doc(256);
+    deserializeJson(doc, server.arg("plain"));
+    
+    String ssid = doc["ssid"];
+    String password = doc["password"];
+    
+    // Сохраняем учетные данные
+    strlcpy(settings.sta_ssid, ssid.c_str(), sizeof(settings.sta_ssid));
+    strlcpy(settings.sta_password, password.c_str(), sizeof(settings.sta_password));
+    settings.client_mode_enabled = true;
+    saveSettings();
+    
+    // Подключаемся к WiFi
+    connectToWiFi();
+    
+    server.send(200, "application/json", "{\"status\":\"connecting\"}");
+  } else {
+    server.send(400, "application/json", "{\"error\":\"No data\"}");
+  }
+}
+
+void handleApiWifiDisconnect() {
+  disconnectFromWiFi();
+  
+  // Очищаем сохраненные учетные данные
+  memset(settings.sta_ssid, 0, sizeof(settings.sta_ssid));
+  memset(settings.sta_password, 0, sizeof(settings.sta_password));
+  settings.client_mode_enabled = false;
+  saveSettings();
+  
+  server.send(200, "application/json", "{\"status\":\"disconnected\"}");
+}
+
+void handleApiWifiStatus() {
+  DynamicJsonDocument doc(256);
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    doc["connected"] = true;
+    doc["ssid"] = WiFi.SSID();
+    doc["ip"] = WiFi.localIP().toString();
+    doc["rssi"] = WiFi.RSSI();
+  } else {
+    doc["connected"] = false;
   }
   
   String response;
@@ -580,6 +756,8 @@ void handleApiClearSettings() {
   settings.subnet = 4;
   settings.ap_mode_enabled = true;
   settings.client_mode_enabled = false;
+  memset(settings.sta_ssid, 0, sizeof(settings.sta_ssid));
+  memset(settings.sta_password, 0, sizeof(settings.sta_password));
   
   saveSettings();
   
