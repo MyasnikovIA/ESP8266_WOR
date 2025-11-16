@@ -6,7 +6,6 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <EEPROM.h>
-#include <ArduinoJson.h>
 #include <WiFiUdp.h>
 
 // Структура для хранения настроек
@@ -47,6 +46,7 @@ public:
   bool isClientModeEnabled() { return settings.client_mode_enabled; }
   String getLocalIP() { return WiFi.localIP().toString(); }
   String getAPIP() { return WiFi.softAPIP().toString(); }
+  bool isConnected() { return WiFi.status() == WL_CONNECTED; }
   
   // Публичный доступ к server
   ESP8266WebServer& getServer() { return server; }
@@ -71,6 +71,14 @@ private:
   void updateConnectedDevices();
   String macToString(uint8_t* mac);
   
+  // Вспомогательные методы для JSON
+  String escapeJSON(const String& str);
+  String buildJSONResponse(const String& status, const String& message = "");
+  String buildSettingsJSON();
+  String buildWifiScanJSON();
+  String buildConnectedDevicesJSON();
+  String buildWifiStatusJSON();
+  
   // Обработчики веб-сервера
   void handleRoot();
   void handleGetSettings();
@@ -85,6 +93,11 @@ private:
   void handleApiRestart();
   void handleNotFound();
   
+  // Парсинг JSON без библиотеки
+  bool parseSettingsJSON(const String& json);
+  bool parseWifiConnectJSON(const String& json);
+  bool parseDeviceInfoJSON(const String& json);
+  
   // HTML генерация
   String getHTMLHeader();
   String getJavaScript();
@@ -95,6 +108,9 @@ private:
   String getDeviceConfigTab();
   String getDeviceControlTab();
   String getModalWindow();
+  
+  // Вспомогательные методы для парсинга
+  void processKeyValue(const String& key, const String& value, bool& changed);
 };
 
 extern WiFiManager wifiManager;

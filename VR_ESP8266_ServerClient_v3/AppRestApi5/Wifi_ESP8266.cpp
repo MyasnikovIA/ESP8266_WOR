@@ -18,6 +18,9 @@ void WiFiManager::begin(const char* ap_ssid, const char* ap_password) {
 
 void WiFiManager::begin(const char* ap_ssid, const char* ap_password, int subnet) {
   Serial.begin(115200);
+  delay(1000); // Даем время для инициализации Serial
+  
+  Serial.println("\n\n=== WiFi Manager Starting ===");
   
   // Инициализация EEPROM
   EEPROM.begin(EEPROM_SIZE);
@@ -39,9 +42,12 @@ void WiFiManager::begin(const char* ap_ssid, const char* ap_password, int subnet
   // Настройка веб-сервера
   setupWebServer();
   
-  Serial.println("WiFi Manager started");
+  Serial.println("=== WiFi Manager Started ===");
   Serial.println("AP SSID: " + String(settings.ap_ssid));
+  Serial.println("AP Password: " + String(settings.ap_password));
   Serial.println("Subnet: 192.168." + String(settings.subnet) + ".1");
+  Serial.println("Device Name: " + String(settings.device_name));
+  Serial.println("Web Server: http://" + WiFi.softAPIP().toString());
 }
 
 void WiFiManager::handleClient() {
@@ -62,19 +68,28 @@ void WiFiManager::setupWiFi() {
     String ap_ssid = String(settings.ap_ssid);
     String ap_ip = "192.168." + String(settings.subnet) + ".1";
     
+    // Настройка режима WiFi
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAPConfig(
-      IPAddress(192, 168, settings.subnet, 1),
-      IPAddress(192, 168, settings.subnet, 1),
-      IPAddress(255, 255, 255, 0)
-    );
-    WiFi.softAP(ap_ssid.c_str(), settings.ap_password);
     
-    Serial.println("AP Mode Started");
-    Serial.println("SSID: " + ap_ssid);
-    Serial.println("IP: " + ap_ip);
+    // Конфигурация точки доступа
+    IPAddress local_ip(192, 168, settings.subnet, 1);
+    IPAddress gateway(192, 168, settings.subnet, 1);
+    IPAddress subnet_mask(255, 255, 255, 0);
+    
+    WiFi.softAPConfig(local_ip, gateway, subnet_mask);
+    
+    // Запуск точки доступа
+    if (WiFi.softAP(ap_ssid.c_str(), settings.ap_password)) {
+      Serial.println("✓ AP Mode Started Successfully");
+      Serial.println("  SSID: " + ap_ssid);
+      Serial.println("  IP: " + WiFi.softAPIP().toString());
+      Serial.println("  Clients: " + String(WiFi.softAPgetStationNum()));
+    } else {
+      Serial.println("✗ Failed to start AP Mode");
+    }
   } else {
     WiFi.mode(WIFI_STA);
+    Serial.println("✓ STA Mode (Client) Started");
   }
   
   // Подключаемся к WiFi сети если указаны учетные данные
@@ -83,7 +98,6 @@ void WiFiManager::setupWiFi() {
   }
 }
 
-// Остальной код остается без изменений...
 void WiFiManager::connectToWiFi() {
   if (strlen(settings.sta_ssid) > 0) {
     Serial.println("Connecting to WiFi: " + String(settings.sta_ssid));
@@ -97,10 +111,12 @@ void WiFiManager::connectToWiFi() {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("\nWiFi connected!");
-      Serial.println("IP address: " + WiFi.localIP().toString());
+      Serial.println("\n✓ WiFi connected!");
+      Serial.println("  SSID: " + WiFi.SSID());
+      Serial.println("  IP: " + WiFi.localIP().toString());
+      Serial.println("  RSSI: " + String(WiFi.RSSI()) + " dBm");
     } else {
-      Serial.println("\nFailed to connect to WiFi");
+      Serial.println("\n✗ Failed to connect to WiFi");
     }
   }
 }
@@ -108,7 +124,7 @@ void WiFiManager::connectToWiFi() {
 void WiFiManager::disconnectFromWiFi() {
   WiFi.disconnect();
   delay(1000);
-  Serial.println("Disconnected from WiFi");
+  Serial.println("✓ Disconnected from WiFi");
 }
 
 void WiFiManager::setupWebServer() {
@@ -134,10 +150,639 @@ void WiFiManager::setupWebServer() {
   server.onNotFound(std::bind(&WiFiManager::handleNotFound, this));
   
   server.begin();
-  Serial.println("HTTP server started");
+  Serial.println("✓ HTTP server started on port 80");
+  Serial.println("  Available at: http://" + WiFi.softAPIP().toString());
 }
 
-// Все остальные методы остаются без изменений...
+// Вспомогательные методы для JSON
+String WiFiManager::escapeJSON(const String& str) {
+  String result = str;
+  result.replace("\\", "\\\\");
+  result.replace("\"", "\\\"");
+  result.replace("/", "\\/");
+  result.replace("\b", "\\b");
+  result.replace("\f", "\\f");
+  result.replace("\n", "\\n");
+  result.replace("\r", "\\r");
+  result.replace("\t", "\\t");
+  return result;
+}
+
+String WiFiManager::buildJSONResponse(const String& status, const String& message) {
+  if (message.length() > 0) {
+    return "{\"status\":\"" + status + "\",\"message\":\"" + escapeJSON(message) + "\"}";
+  } else {
+    return "{\"status\":\"" + status + "\"}";
+  }
+}
+
+String WiFiManager::buildSettingsJSON() {
+  String json = "{";
+  json += "\"ap_ssid\":\"" + escapeJSON(settings.ap_ssid) + "\",";
+  json += "\"ap_password\":\"" + escapeJSON(settings.ap_password) + "\",";
+  json += "\"device_name\":\"" + escapeJSON(settings.device_name) + "\",";
+  json += "\"device_comment\":\"" + escapeJSON(settings.device_comment) + "\",";
+  json += "\"subnet\":" + String(settings.subnet) + ",";
+  json += "\"ap_mode_enabled\":" + String(settings.ap_mode_enabled ? "true" : "false") + ",";
+  json += "\"client_mode_enabled\":" + String(settings.client_mode_enabled ? "true" : "false") + ",";
+  json += "\"sta_ssid\":\"" + escapeJSON(settings.sta_ssid) + "\"";
+  json += "}";
+  return json;
+}
+
+String WiFiManager::buildWifiScanJSON() {
+  int n = WiFi.scanNetworks();
+  String json = "{\"networks\":[";
+  
+  for (int i = 0; i < n; i++) {
+    if (i > 0) json += ",";
+    json += "{";
+    json += "\"ssid\":\"" + escapeJSON(WiFi.SSID(i)) + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+    json += "\"encryption\":" + String(WiFi.encryptionType(i));
+    json += "}";
+  }
+  
+  json += "]}";
+  return json;
+}
+
+String WiFiManager::buildConnectedDevicesJSON() {
+  String json = "{\"devices\":[";
+  
+  for (int i = 0; i < connectedDevicesCount; i++) {
+    if (i > 0) json += ",";
+    json += "{";
+    json += "\"ip\":\"" + escapeJSON(connectedDevices[i].ip) + "\",";
+    json += "\"mac\":\"" + escapeJSON(connectedDevices[i].mac) + "\",";
+    json += "\"device_name\":\"" + escapeJSON(connectedDevices[i].device_name) + "\",";
+    json += "\"device_comment\":\"" + escapeJSON(connectedDevices[i].device_comment) + "\"";
+    json += "}";
+  }
+  
+  json += "]}";
+  return json;
+}
+
+String WiFiManager::buildWifiStatusJSON() {
+  String json = "{";
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    json += "\"connected\":true,";
+    json += "\"ssid\":\"" + escapeJSON(WiFi.SSID()) + "\",";
+    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI());
+  } else {
+    json += "\"connected\":false";
+  }
+  
+  json += "}";
+  return json;
+}
+
+// Парсинг JSON методов
+bool WiFiManager::parseSettingsJSON(const String& json) {
+  bool changed = false;
+  String key, value;
+  bool inKey = false, inValue = false, inString = false, inNumber = false, inBoolean = false;
+  bool escapeNext = false;
+  
+  for (unsigned int i = 0; i < json.length(); i++) {
+    char c = json[i];
+    
+    // Обработка escape-символов
+    if (escapeNext) {
+      if (inKey) key += c;
+      else if (inValue) value += c;
+      escapeNext = false;
+      continue;
+    }
+    
+    if (c == '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (c == '"' && !inString) {
+      inString = true;
+      if (!inKey && !inValue && !inNumber && !inBoolean) {
+        inKey = true;
+        key = "";
+      }
+    } 
+    else if (c == '"' && inString) {
+      inString = false;
+      if (inKey) {
+        inKey = false;
+      } else if (inValue) {
+        inValue = false;
+        processKeyValue(key, value, changed);
+        key = "";
+        value = "";
+      }
+    } 
+    else if (c == ':' && !inString && !inNumber && !inBoolean) {
+      if (!inKey && key.length() > 0) {
+        // Определяем тип значения
+        if (i + 1 < json.length()) {
+          char nextChar = json[i + 1];
+          if (nextChar == '"') {
+            inValue = true;
+            value = "";
+          } else if (nextChar == 't' || nextChar == 'f') {
+            inBoolean = true;
+            value = "";
+          } else if (isdigit(nextChar) || nextChar == '-') {
+            inNumber = true;
+            value = "";
+          }
+        }
+      }
+    } 
+    else if (c == ',' && !inString && !inNumber && !inBoolean) {
+      if (inNumber || inBoolean) {
+        processKeyValue(key, value, changed);
+        key = "";
+        value = "";
+        inNumber = false;
+        inBoolean = false;
+      }
+    } 
+    else if (c == '}' && !inString) {
+      if (inNumber || inBoolean) {
+        processKeyValue(key, value, changed);
+        key = "";
+        value = "";
+        inNumber = false;
+        inBoolean = false;
+      }
+    } 
+    else if (inString) {
+      if (inKey) {
+        key += c;
+      } else if (inValue) {
+        value += c;
+      }
+    } 
+    else if (inNumber) {
+      if (isdigit(c) || c == '-' || c == '.') {
+        value += c;
+      }
+    } 
+    else if (inBoolean) {
+      if (isalpha(c)) {
+        value += c;
+      }
+    }
+  }
+  
+  // Обработка последней пары ключ-значение
+  if (key.length() > 0 && value.length() > 0) {
+    processKeyValue(key, value, changed);
+  }
+  
+  return changed;
+}
+
+void WiFiManager::processKeyValue(const String& key, const String& value, bool& changed) {
+  Serial.println("Processing setting: " + key + " = " + value);
+  
+  if (key == "ap_ssid") {
+    if (strcmp(settings.ap_ssid, value.c_str()) != 0) {
+      strlcpy(settings.ap_ssid, value.c_str(), sizeof(settings.ap_ssid));
+      changed = true;
+    }
+  } else if (key == "ap_password") {
+    if (strcmp(settings.ap_password, value.c_str()) != 0) {
+      strlcpy(settings.ap_password, value.c_str(), sizeof(settings.ap_password));
+      changed = true;
+    }
+  } else if (key == "device_name") {
+    if (strcmp(settings.device_name, value.c_str()) != 0) {
+      strlcpy(settings.device_name, value.c_str(), sizeof(settings.device_name));
+      changed = true;
+    }
+  } else if (key == "device_comment") {
+    if (strcmp(settings.device_comment, value.c_str()) != 0) {
+      strlcpy(settings.device_comment, value.c_str(), sizeof(settings.device_comment));
+      changed = true;
+    }
+  } else if (key == "subnet") {
+    int newSubnet = value.toInt();
+    if (newSubnet >= 1 && newSubnet <= 255 && newSubnet != settings.subnet) {
+      settings.subnet = newSubnet;
+      changed = true;
+    }
+  } else if (key == "ap_mode_enabled") {
+    bool newValue = (value == "true");
+    if (newValue != settings.ap_mode_enabled) {
+      settings.ap_mode_enabled = newValue;
+      changed = true;
+    }
+  } else if (key == "client_mode_enabled") {
+    bool newValue = (value == "true");
+    if (newValue != settings.client_mode_enabled) {
+      settings.client_mode_enabled = newValue;
+      changed = true;
+    }
+  }
+}
+
+bool WiFiManager::parseWifiConnectJSON(const String& json) {
+  String ssid, password;
+  bool inKey = false, inValue = false, inString = false;
+  String key, value;
+  bool escapeNext = false;
+  
+  for (unsigned int i = 0; i < json.length(); i++) {
+    char c = json[i];
+    
+    if (escapeNext) {
+      if (inKey) key += c;
+      else if (inValue) value += c;
+      escapeNext = false;
+      continue;
+    }
+    
+    if (c == '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (c == '"' && !inString) {
+      inString = true;
+      if (!inKey && !inValue) {
+        inKey = true;
+        key = "";
+      }
+    } else if (c == '"' && inString) {
+      inString = false;
+      if (inKey) {
+        inKey = false;
+        inValue = true;
+      } else if (inValue) {
+        inValue = false;
+        
+        if (key == "ssid") {
+          ssid = value;
+        } else if (key == "password") {
+          password = value;
+        }
+        
+        key = "";
+        value = "";
+      }
+    } else if (inString) {
+      if (inKey) {
+        key += c;
+      } else if (inValue) {
+        value += c;
+      }
+    } else if (c == ':' && !inString) {
+      // Переход от ключа к значению
+    } else if (c == ',' && !inString) {
+      // Следующая пара ключ-значение
+    }
+  }
+  
+  if (ssid.length() > 0) {
+    strlcpy(settings.sta_ssid, ssid.c_str(), sizeof(settings.sta_ssid));
+    strlcpy(settings.sta_password, password.c_str(), sizeof(settings.sta_password));
+    settings.client_mode_enabled = true;
+    return true;
+  }
+  
+  return false;
+}
+
+bool WiFiManager::parseDeviceInfoJSON(const String& json) {
+  String mac, device_name, device_comment;
+  bool inKey = false, inValue = false, inString = false;
+  String key, value;
+  bool escapeNext = false;
+  
+  for (unsigned int i = 0; i < json.length(); i++) {
+    char c = json[i];
+    
+    if (escapeNext) {
+      if (inKey) key += c;
+      else if (inValue) value += c;
+      escapeNext = false;
+      continue;
+    }
+    
+    if (c == '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (c == '"' && !inString) {
+      inString = true;
+      if (!inKey && !inValue) {
+        inKey = true;
+        key = "";
+      }
+    } else if (c == '"' && inString) {
+      inString = false;
+      if (inKey) {
+        inKey = false;
+        inValue = true;
+      } else if (inValue) {
+        inValue = false;
+        
+        if (key == "mac") {
+          mac = value;
+        } else if (key == "device_name") {
+          device_name = value;
+        } else if (key == "device_comment") {
+          device_comment = value;
+        }
+        
+        key = "";
+        value = "";
+      }
+    } else if (inString) {
+      if (inKey) {
+        key += c;
+      } else if (inValue) {
+        value += c;
+      }
+    }
+  }
+  
+  if (mac.length() > 0) {
+    for (int i = 0; i < connectedDevicesCount; i++) {
+      if (connectedDevices[i].mac == mac) {
+        connectedDevices[i].device_name = device_name;
+        connectedDevices[i].device_comment = device_comment;
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+// Обработчики API
+void WiFiManager::handleGetSettings() {
+  WiFiClient client = server.client();
+  
+  // Отправляем HTTP заголовок
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  // Отправляем JSON
+  client.print(buildSettingsJSON());
+  client.stop();
+}
+
+void WiFiManager::handlePostSettings() {
+  if (server.hasArg("plain")) {
+    String json = server.arg("plain");
+    Serial.println("Received settings JSON: " + json);
+    
+    WiFiClient client = server.client();
+    
+    if (parseSettingsJSON(json)) {
+      saveSettings();
+      // Отправляем HTTP заголовок
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: application/json");
+      client.println("Connection: close");
+      client.println();
+      
+      // Отправляем JSON ответ
+      client.print(buildJSONResponse("ok", "Settings saved"));
+      Serial.println("✓ Settings saved successfully");
+    } else {
+      client.println("HTTP/1.1 400 Bad Request");
+      client.println("Content-Type: application/json");
+      client.println("Connection: close");
+      client.println();
+      
+      client.print(buildJSONResponse("error", "Invalid JSON data"));
+      Serial.println("✗ Invalid settings JSON");
+    }
+    client.stop();
+  } else {
+    WiFiClient client = server.client();
+    client.println("HTTP/1.1 400 Bad Request");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    client.println();
+    
+    client.print(buildJSONResponse("error", "No data received"));
+    client.stop();
+    Serial.println("✗ No data received for settings");
+  }
+}
+
+void WiFiManager::handleApiWifiScan() {
+  Serial.println("Scanning WiFi networks...");
+  int n = WiFi.scanNetworks();
+  Serial.println("Found " + String(n) + " networks");
+  
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(buildWifiScanJSON());
+  client.stop();
+}
+
+void WiFiManager::handleApiWifiConnect() {
+  if (server.hasArg("plain")) {
+    String json = server.arg("plain");
+    Serial.println("Received WiFi connect JSON: " + json);
+    
+    WiFiClient client = server.client();
+    
+    if (parseWifiConnectJSON(json)) {
+      saveSettings();
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: application/json");
+      client.println("Connection: close");
+      client.println();
+      
+      client.print(buildJSONResponse("connecting", "Connecting to WiFi"));
+      Serial.println("✓ WiFi connection settings saved");
+      
+      // Подключаемся асинхронно
+      connectToWiFi();
+    } else {
+      client.println("HTTP/1.1 400 Bad Request");
+      client.println("Content-Type: application/json");
+      client.println("Connection: close");
+      client.println();
+      
+      client.print(buildJSONResponse("error", "Invalid connection data"));
+      Serial.println("✗ Invalid WiFi connect JSON");
+    }
+    client.stop();
+  } else {
+    WiFiClient client = server.client();
+    client.println("HTTP/1.1 400 Bad Request");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    client.println();
+    
+    client.print(buildJSONResponse("error", "No data received"));
+    client.stop();
+    Serial.println("✗ No data received for WiFi connect");
+  }
+}
+
+void WiFiManager::handleApiWifiDisconnect() {
+  disconnectFromWiFi();
+  
+  // Очищаем сохраненные учетные данные
+  memset(settings.sta_ssid, 0, sizeof(settings.sta_ssid));
+  memset(settings.sta_password, 0, sizeof(settings.sta_password));
+  settings.client_mode_enabled = false;
+  saveSettings();
+  
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(buildJSONResponse("disconnected", "Disconnected from WiFi"));
+  client.stop();
+  Serial.println("✓ WiFi disconnected and credentials cleared");
+}
+
+void WiFiManager::handleApiWifiStatus() {
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(buildWifiStatusJSON());
+  client.stop();
+}
+
+void WiFiManager::handleApiConnectedDevices() {
+  updateConnectedDevices();
+  
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(buildConnectedDevicesJSON());
+  client.stop();
+}
+
+void WiFiManager::handleApiDeviceInfo() {
+  if (server.hasArg("plain")) {
+    String json = server.arg("plain");
+    Serial.println("Received device info JSON: " + json);
+    
+    WiFiClient client = server.client();
+    
+    if (parseDeviceInfoJSON(json)) {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: application/json");
+      client.println("Connection: close");
+      client.println();
+      
+      client.print(buildJSONResponse("ok", "Device info saved"));
+      Serial.println("✓ Device info saved");
+    } else {
+      client.println("HTTP/1.1 400 Bad Request");
+      client.println("Content-Type: application/json");
+      client.println("Connection: close");
+      client.println();
+      
+      client.print(buildJSONResponse("error", "Invalid device info"));
+      Serial.println("✗ Invalid device info JSON");
+    }
+    client.stop();
+  } else {
+    WiFiClient client = server.client();
+    client.println("HTTP/1.1 400 Bad Request");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    client.println();
+    
+    client.print(buildJSONResponse("error", "No data received"));
+    client.stop();
+    Serial.println("✗ No data received for device info");
+  }
+}
+
+void WiFiManager::handleApiClearSettings() {
+  // Сброс настроек к значениям по умолчанию
+  strlcpy(settings.ap_ssid, "VR_APP_ESP", sizeof(settings.ap_ssid));
+  strlcpy(settings.ap_password, "12345678", sizeof(settings.ap_password));
+  strlcpy(settings.device_name, "ESP8266_Device", sizeof(settings.device_name));
+  strlcpy(settings.device_comment, "Default Comment", sizeof(settings.device_comment));
+  settings.subnet = 4;
+  settings.ap_mode_enabled = true;
+  settings.client_mode_enabled = false;
+  memset(settings.sta_ssid, 0, sizeof(settings.sta_ssid));
+  memset(settings.sta_password, 0, sizeof(settings.sta_password));
+  
+  saveSettings();
+  
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(buildJSONResponse("ok", "Settings cleared to defaults"));
+  client.stop();
+  Serial.println("✓ Settings cleared to defaults");
+}
+
+void WiFiManager::handleApiRestart() {
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(buildJSONResponse("restarting", "Device restarting"));
+  client.stop();
+  
+  Serial.println("✓ Restart command received");
+  delay(1000);
+  ESP.restart();
+}
+
+void WiFiManager::handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 404 Not Found");
+  client.println("Content-Type: text/plain");
+  client.println("Connection: close");
+  client.println();
+  
+  client.print(message);
+  client.stop();
+}
+
+// HTML генерация
 String WiFiManager::getHTMLHeader() {
   return R"=====(
 <!DOCTYPE html>
@@ -223,6 +868,10 @@ String WiFiManager::getJavaScript() {
                     });
                     table += '</table>';
                     document.getElementById('connectedDevicesTable').innerHTML = table;
+                })
+                .catch(error => {
+                    console.error('Error loading connected devices:', error);
+                    document.getElementById('connectedDevicesTable').innerHTML = '<p style="color: red;">Ошибка загрузки устройств</p>';
                 });
         }
 
@@ -246,9 +895,20 @@ String WiFiManager::getJavaScript() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mac: mac, device_name: name, device_comment: comment })
-            }).then(() => {
-                closeModal();
-                loadConnectedDevices();
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Информация об устройстве сохранена');
+                    closeModal();
+                    loadConnectedDevices();
+                } else {
+                    alert('Ошибка сохранения: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Ошибка сохранения информации об устройстве');
+                console.error('Error saving device info:', error);
             });
         }
 
@@ -270,6 +930,10 @@ String WiFiManager::getJavaScript() {
                         }
                         subnetSelect.appendChild(option);
                     }
+                })
+                .catch(error => {
+                    console.error('Error loading AP settings:', error);
+                    alert('Ошибка загрузки настроек точки доступа');
                 });
         }
 
@@ -284,7 +948,19 @@ String WiFiManager::getJavaScript() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
-            }).then(() => alert('Настройки точки доступа сохранены'));
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Настройки точки доступа сохранены');
+                } else {
+                    alert('Ошибка сохранения: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Ошибка сохранения настроек точки доступа');
+                console.error('Error saving AP settings:', error);
+            });
         }
 
         function scanWiFi() {
@@ -304,6 +980,10 @@ String WiFiManager::getJavaScript() {
                         `;
                     });
                     document.getElementById('wifiNetworks').innerHTML = networksHTML;
+                })
+                .catch(error => {
+                    console.error('Error scanning WiFi:', error);
+                    document.getElementById('wifiNetworks').innerHTML = '<p style="color: red;">Ошибка сканирования сетей</p>';
                 });
         }
 
@@ -328,11 +1008,16 @@ String WiFiManager::getJavaScript() {
             })
             .then(response => response.json())
             .then(data => {
-                alert('Подключение к сети ' + ssid + ' выполнено');
-                loadWiFiStatus();
+                if (data.status === 'connecting') {
+                    alert('Подключение к сети ' + ssid + ' выполняется');
+                    loadWiFiStatus();
+                } else {
+                    alert('Ошибка подключения: ' + (data.message || 'Unknown error'));
+                }
             })
             .catch(error => {
                 alert('Ошибка подключения к сети');
+                console.error('Error connecting to WiFi:', error);
             });
         }
 
@@ -341,9 +1026,17 @@ String WiFiManager::getJavaScript() {
                 fetch('/api/wifi-disconnect', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
-                        alert('Отключено от WiFi сети');
-                        loadWiFiStatus();
-                        scanWiFi();
+                        if (data.status === 'disconnected') {
+                            alert('Отключено от WiFi сети');
+                            loadWiFiStatus();
+                            scanWiFi();
+                        } else {
+                            alert('Ошибка отключения: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        alert('Ошибка отключения от WiFi');
+                        console.error('Error disconnecting from WiFi:', error);
                     });
             }
         }
@@ -361,7 +1054,7 @@ String WiFiManager::getJavaScript() {
                                 IP: ${data.ip}<br>
                                 Сигнал: ${data.rssi}dBm
                             </div>
-                            <button onclick="disconnectFromWiFi()" style="background-color: #f44336;">Отключиться от точки доступа</button>
+                            <button onclick="disconnectFromWiFi()" style="background-color: #f44336;">Отключиться от WiFi</button>
                         `;
                     } else {
                         statusHTML = `
@@ -371,6 +1064,10 @@ String WiFiManager::getJavaScript() {
                         `;
                     }
                     document.getElementById('wifiStatus').innerHTML = statusHTML;
+                })
+                .catch(error => {
+                    console.error('Error loading WiFi status:', error);
+                    document.getElementById('wifiStatus').innerHTML = '<p style="color: red;">Ошибка загрузки статуса WiFi</p>';
                 });
         }
 
@@ -380,6 +1077,10 @@ String WiFiManager::getJavaScript() {
                 .then(settings => {
                     document.getElementById('deviceName').value = settings.device_name || '';
                     document.getElementById('deviceComment').value = settings.device_comment || '';
+                })
+                .catch(error => {
+                    console.error('Error loading device config:', error);
+                    alert('Ошибка загрузки настроек устройства');
                 });
         }
 
@@ -393,7 +1094,19 @@ String WiFiManager::getJavaScript() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)
-            }).then(() => alert('Настройки устройства сохранены'));
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Настройки устройства сохранены');
+                } else {
+                    alert('Ошибка сохранения: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Ошибка сохранения настроек устройства');
+                console.error('Error saving device config:', error);
+            });
         }
 
         function loadDeviceControl() {
@@ -402,6 +1115,10 @@ String WiFiManager::getJavaScript() {
                 .then(settings => {
                     document.getElementById('apModeEnabled').checked = settings.ap_mode_enabled || false;
                     document.getElementById('clientModeEnabled').checked = settings.client_mode_enabled || false;
+                })
+                .catch(error => {
+                    console.error('Error loading device control:', error);
+                    alert('Ошибка загрузки управления устройством');
                 });
         }
 
@@ -415,19 +1132,56 @@ String WiFiManager::getJavaScript() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(control)
-            }).then(() => alert('Настройки управления сохранены'));
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Настройки управления сохранены');
+                } else {
+                    alert('Ошибка сохранения: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Ошибка сохранения управления устройством');
+                console.error('Error saving device control:', error);
+            });
         }
 
         function clearSettings() {
             if (confirm('Вы уверены, что хотите очистить все настройки?')) {
                 fetch('/api/clear-settings', { method: 'POST' })
-                    .then(() => alert('Настройки очищены'));
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            alert('Настройки очищены');
+                            location.reload();
+                        } else {
+                            alert('Ошибка очистки: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        alert('Ошибка очистки настроек');
+                        console.error('Error clearing settings:', error);
+                    });
             }
         }
 
         function restartDevice() {
             if (confirm('Перезагрузить устройство?')) {
-                fetch('/api/restart', { method: 'POST' });
+                fetch('/api/restart', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'restarting') {
+                            alert('Устройство перезагружается...');
+                            setTimeout(() => {
+                                location.reload();
+                            }, 5000);
+                        }
+                    })
+                    .catch(error => {
+                        alert('Ошибка перезагрузки устройства');
+                        console.error('Error restarting device:', error);
+                    });
             }
         }
 
@@ -565,13 +1319,11 @@ String WiFiManager::getModalWindow() {
 
 void WiFiManager::handleRoot() {
   WiFiClient client = server.client();
-  
   // Отправляем HTTP заголовок
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: text/html");
   client.println("Connection: close");
   client.println();
-  
   // Отправляем HTML частями
   client.print(getHTMLHeader());
   client.print(getJavaScript());
@@ -582,204 +1334,7 @@ void WiFiManager::handleRoot() {
   client.print(getDeviceConfigTab());
   client.print(getDeviceControlTab());
   client.print(getModalWindow());
-  
   client.stop();
-}
-
-void WiFiManager::handleGetSettings() {
-  DynamicJsonDocument doc(1024);
-  doc["ap_ssid"] = settings.ap_ssid;
-  doc["ap_password"] = settings.ap_password;
-  doc["device_name"] = settings.device_name;
-  doc["device_comment"] = settings.device_comment;
-  doc["subnet"] = settings.subnet;
-  doc["ap_mode_enabled"] = settings.ap_mode_enabled;
-  doc["client_mode_enabled"] = settings.client_mode_enabled;
-  doc["sta_ssid"] = settings.sta_ssid;
-  
-  String response;
-  serializeJson(doc, response);
-  
-  server.send(200, "application/json", response);
-}
-
-void WiFiManager::handlePostSettings() {
-  if (server.hasArg("plain")) {
-    DynamicJsonDocument doc(1024);
-    deserializeJson(doc, server.arg("plain"));
-    
-    if (doc.containsKey("ap_ssid")) strlcpy(settings.ap_ssid, doc["ap_ssid"], sizeof(settings.ap_ssid));
-    if (doc.containsKey("ap_password")) strlcpy(settings.ap_password, doc["ap_password"], sizeof(settings.ap_password));
-    if (doc.containsKey("device_name")) strlcpy(settings.device_name, doc["device_name"], sizeof(settings.device_name));
-    if (doc.containsKey("device_comment")) strlcpy(settings.device_comment, doc["device_comment"], sizeof(settings.device_comment));
-    if (doc.containsKey("subnet")) settings.subnet = doc["subnet"];
-    if (doc.containsKey("ap_mode_enabled")) settings.ap_mode_enabled = doc["ap_mode_enabled"];
-    if (doc.containsKey("client_mode_enabled")) settings.client_mode_enabled = doc["client_mode_enabled"];
-    
-    saveSettings();
-    
-    server.send(200, "application/json", "{\"status\":\"ok\"}");
-  } else {
-    server.send(400, "application/json", "{\"error\":\"No data\"}");
-  }
-}
-
-void WiFiManager::handleApiWifiScan() {
-  int n = WiFi.scanNetworks();
-  DynamicJsonDocument doc(2048);
-  JsonArray networks = doc.createNestedArray("networks");
-  
-  for (int i = 0; i < n; i++) {
-    JsonObject network = networks.createNestedObject();
-    network["ssid"] = WiFi.SSID(i);
-    network["rssi"] = WiFi.RSSI(i);
-    network["encryption"] = WiFi.encryptionType(i);
-  }
-  
-  String response;
-  serializeJson(doc, response);
-  
-  server.send(200, "application/json", response);
-}
-
-void WiFiManager::handleApiWifiConnect() {
-  if (server.hasArg("plain")) {
-    DynamicJsonDocument doc(256);
-    deserializeJson(doc, server.arg("plain"));
-    
-    String ssid = doc["ssid"];
-    String password = doc["password"];
-    
-    // Сохраняем учетные данные
-    strlcpy(settings.sta_ssid, ssid.c_str(), sizeof(settings.sta_ssid));
-    strlcpy(settings.sta_password, password.c_str(), sizeof(settings.sta_password));
-    settings.client_mode_enabled = true;
-    saveSettings();
-    
-    // Подключаемся к WiFi
-    connectToWiFi();
-    
-    server.send(200, "application/json", "{\"status\":\"connecting\"}");
-  } else {
-    server.send(400, "application/json", "{\"error\":\"No data\"}");
-  }
-}
-
-void WiFiManager::handleApiWifiDisconnect() {
-  disconnectFromWiFi();
-  
-  // Очищаем сохраненные учетные данные
-  memset(settings.sta_ssid, 0, sizeof(settings.sta_ssid));
-  memset(settings.sta_password, 0, sizeof(settings.sta_password));
-  settings.client_mode_enabled = false;
-  saveSettings();
-  
-  server.send(200, "application/json", "{\"status\":\"disconnected\"}");
-}
-
-void WiFiManager::handleApiWifiStatus() {
-  DynamicJsonDocument doc(256);
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    doc["connected"] = true;
-    doc["ssid"] = WiFi.SSID();
-    doc["ip"] = WiFi.localIP().toString();
-    doc["rssi"] = WiFi.RSSI();
-  } else {
-    doc["connected"] = false;
-  }
-  
-  String response;
-  serializeJson(doc, response);
-  
-  server.send(200, "application/json", response);
-}
-
-void WiFiManager::handleApiConnectedDevices() {
-  updateConnectedDevices();
-  
-  DynamicJsonDocument doc(2048);
-  JsonArray devices = doc.createNestedArray("devices");
-  
-  for (int i = 0; i < connectedDevicesCount; i++) {
-    JsonObject device = devices.createNestedObject();
-    device["ip"] = connectedDevices[i].ip;
-    device["mac"] = connectedDevices[i].mac;
-    device["device_name"] = connectedDevices[i].device_name;
-    device["device_comment"] = connectedDevices[i].device_comment;
-  }
-  
-  String response;
-  serializeJson(doc, response);
-  
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-  server.send(200, "application/json", response);
-}
-
-void WiFiManager::handleApiDeviceInfo() {
-  if (server.hasArg("plain")) {
-    DynamicJsonDocument doc(256);
-    deserializeJson(doc, server.arg("plain"));
-    
-    String mac = doc["mac"];
-    String device_name = doc["device_name"];
-    String device_comment = doc["device_comment"];
-    
-    // Обновляем информацию об устройстве
-    for (int i = 0; i < connectedDevicesCount; i++) {
-      if (connectedDevices[i].mac == mac) {
-        connectedDevices[i].device_name = device_name;
-        connectedDevices[i].device_comment = device_comment;
-        break;
-      }
-    }
-    
-    server.send(200, "application/json", "{\"status\":\"ok\"}");
-  } else {
-    server.send(400, "application/json", "{\"error\":\"No data\"}");
-  }
-}
-
-void WiFiManager::handleApiClearSettings() {
-  // Сброс настроек к значениям по умолчанию
-  strlcpy(settings.ap_ssid, "VR_APP_ESP", sizeof(settings.ap_ssid));
-  strlcpy(settings.ap_password, "12345678", sizeof(settings.ap_password));
-  strlcpy(settings.device_name, "ESP8266_Device", sizeof(settings.device_name));
-  strlcpy(settings.device_comment, "Default Comment", sizeof(settings.device_comment));
-  settings.subnet = 4;
-  settings.ap_mode_enabled = true;
-  settings.client_mode_enabled = false;
-  memset(settings.sta_ssid, 0, sizeof(settings.sta_ssid));
-  memset(settings.sta_password, 0, sizeof(settings.sta_password));
-  
-  saveSettings();
-  
-  server.send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-void WiFiManager::handleApiRestart() {
-  server.send(200, "application/json", "{\"status\":\"restarting\"}");
-  delay(1000);
-  ESP.restart();
-}
-
-void WiFiManager::handleNotFound() {
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  
-  server.send(404, "text/plain", message);
 }
 
 void WiFiManager::loadSettings() {
