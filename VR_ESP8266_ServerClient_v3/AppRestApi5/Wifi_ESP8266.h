@@ -33,7 +33,12 @@ struct ConnectedDevice {
 class WiFiManager {
 public:
   WiFiManager();
+  
+  // Перегруженные методы begin
   void begin();
+  void begin(const char* ap_ssid, const char* ap_password);
+  void begin(const char* ap_ssid, const char* ap_password, int subnet);
+  
   void handleClient();
   void update();
   
