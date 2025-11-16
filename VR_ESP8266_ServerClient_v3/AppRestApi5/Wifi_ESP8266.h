@@ -2,24 +2,17 @@
 #define WIFI_ESP8266_H
 
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+#include <WebSocketsServer.h>
 #include <EEPROM.h>
+#include <ArduinoJson.h>
 #include <WiFiUdp.h>
+#include <functional>
+#include <vector>
 
-// Структура для хранения настроек
-struct Settings {
-  char ap_ssid[32] = "VR_APP_ESP";
-  char ap_password[32] = "12345678";
-  char device_name[32] = "ESP8266_Device";
-  char device_comment[64] = "Default Comment";
-  int subnet = 4;
-  bool ap_mode_enabled = true;
-  bool client_mode_enabled = false;
-  char sta_ssid[32] = "";
-  char sta_password[32] = "";
-};
+// Типы колбэков для WebSocket
+typedef std::function<String(const String&)> WebSocketCallback;
+typedef std::function<void()> WebSocketLoopCallback;
 
 // Структура для информации о подключенных устройствах
 struct ConnectedDevice {
@@ -29,74 +22,77 @@ struct ConnectedDevice {
   String device_comment;
 };
 
+// Структура для WebSocket обработчика
+struct WebSocketHandler {
+  String path;
+  WebSocketCallback callback;
+  WebSocketLoopCallback loopCallback;
+  bool useLoopMode;
+};
+
+// Расширенная структура для хранения настроек
+struct WiFiSettings {
+  char ap_ssid[32];
+  char ap_password[32];
+  char device_name[32];
+  char device_comment[64];
+  int subnet;
+  bool ap_mode_enabled;
+  bool client_mode_enabled;
+  char sta_ssid[32];
+  char sta_password[32];
+};
+
 class WiFiManager {
 public:
   WiFiManager();
   
-  // Перегруженные методы begin
+  // Методы инициализации
   void begin();
-  void begin(const char* ap_ssid, const char* ap_password);
+  void begin(const char* ap_ssid, const char* ap_password = "12345678");
   void begin(const char* ap_ssid, const char* ap_password, int subnet);
   
+  // Основные методы управления
   void handleClient();
   void update();
   
-  // Геттеры для доступа к состоянию
-  bool isAPModeEnabled() { return settings.ap_mode_enabled; }
-  bool isClientModeEnabled() { return settings.client_mode_enabled; }
-  String getLocalIP() { return WiFi.localIP().toString(); }
-  String getAPIP() { return WiFi.softAPIP().toString(); }
-  bool isConnected() { return WiFi.status() == WL_CONNECTED; }
-  
-  // Публичный доступ к server
-  ESP8266WebServer& getServer() { return server; }
-  
-private:
-  Settings settings;
-  ESP8266WebServer server;
-  
-  ConnectedDevice connectedDevices[10];
-  int connectedDevicesCount = 0;
-  
-  // Адреса в EEPROM для хранения настроек
-  const int EEPROM_SIZE = 512;
-  const int SETTINGS_ADDR = 0;
-  
-  void setupWiFi();
-  void connectToWiFi();
+  // Методы работы с WiFi
+  bool connectToWiFi(const char* ssid, const char* password);
   void disconnectFromWiFi();
-  void setupWebServer();
+  bool scanNetworks(JsonArray& networks);
+  
+  // Методы работы с подключенными устройствами
+  void updateConnectedDevices();
+  int getConnectedDevicesCount() const { return connectedDevicesCount; }
+  ConnectedDevice* getConnectedDevices() { return connectedDevices; }
+  
+  // Методы работы с WebSocket
+  void webSocket(const String& path, WebSocketCallback callback);
+  void webSocketLoop(const String& path, WebSocketLoopCallback loopCallback);
+  void sendWebSocketMessage(uint8_t num, const String& message);
+  void sendWebSocketBroadcast(const String& message);
+  String readWebSocketCommand(uint8_t num);
+  bool isWebSocketClientConnected(uint8_t num);
+  void disconnectWebSocketClient(uint8_t num);
+  
+  // Геттеры
+  bool isAPModeEnabled() const { return settings.ap_mode_enabled; }
+  bool isClientModeEnabled() const { return settings.client_mode_enabled; }
+  bool isConnected() const { return WiFi.status() == WL_CONNECTED; }
+  String getAPIP() const { return WiFi.softAPIP().toString(); }
+  String getLocalIP() const { return WiFi.localIP().toString(); }
+  ESP8266WebServer& getServer() { return server; }
+  WiFiSettings& getSettings() { return settings; }
+  WebSocketsServer& getWebSocketServer() { return webSocketServer; }
+  
+  // Работа с настройками
   void loadSettings();
   void saveSettings();
-  void updateConnectedDevices();
+  void clearSettings();
+  
+  // Утилиты
+  String getWiFiStatus();
   String macToString(uint8_t* mac);
-  
-  // Вспомогательные методы для JSON
-  String escapeJSON(const String& str);
-  String buildJSONResponse(const String& status, const String& message = "");
-  String buildSettingsJSON();
-  String buildWifiScanJSON();
-  String buildConnectedDevicesJSON();
-  String buildWifiStatusJSON();
-  
-  // Обработчики веб-сервера
-  void handleRoot();
-  void handleGetSettings();
-  void handlePostSettings();
-  void handleApiWifiScan();
-  void handleApiWifiConnect();
-  void handleApiWifiDisconnect();
-  void handleApiWifiStatus();
-  void handleApiConnectedDevices();
-  void handleApiDeviceInfo();
-  void handleApiClearSettings();
-  void handleApiRestart();
-  void handleNotFound();
-  
-  // Парсинг JSON без библиотеки
-  bool parseSettingsJSON(const String& json);
-  bool parseWifiConnectJSON(const String& json);
-  bool parseDeviceInfoJSON(const String& json);
   
   // HTML генерация
   String getHTMLHeader();
@@ -108,9 +104,37 @@ private:
   String getDeviceConfigTab();
   String getDeviceControlTab();
   String getModalWindow();
+  String getWebSocketJavaScript();
+
+private:
+  ESP8266WebServer server;
+  WebSocketsServer webSocketServer;
+  WiFiSettings settings;
+  ConnectedDevice connectedDevices[10];
+  int connectedDevicesCount;
   
-  // Вспомогательные методы для парсинга
-  void processKeyValue(const String& key, const String& value, bool& changed);
+  // WebSocket обработчики
+  std::vector<WebSocketHandler> webSocketHandlers;
+  std::vector<String> webSocketCommands[10]; // Буфер команд для каждого клиента
+  
+  void setupWiFi();
+  void setupWebServer();
+  void setupAPMode();
+  void loadDefaultSettings();
+  
+  // Обработчики маршрутов
+  void handleRoot();
+  void handleGetSettings();
+  void handlePostSettings();
+  void handleApiConnectedDevices();
+  void handleApiDeviceInfo();
+  void handleApiClearSettings();
+  void handleApiRestart();
+  void handleNotFound();
+  
+  // Обработчики WebSocket
+  void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length);
+  void processWebSocketLoopHandlers();
 };
 
 extern WiFiManager wifiManager;
