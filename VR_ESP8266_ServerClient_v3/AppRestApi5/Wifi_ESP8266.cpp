@@ -7,6 +7,16 @@ WiFiManager::WiFiManager() : server(80) {
 }
 
 void WiFiManager::begin() {
+  // Используем настройки по умолчанию
+  begin("VR_APP_ESP", "12345678", 4);
+}
+
+void WiFiManager::begin(const char* ap_ssid, const char* ap_password) {
+  // Используем подсеть по умолчанию
+  begin(ap_ssid, ap_password, 4);
+}
+
+void WiFiManager::begin(const char* ap_ssid, const char* ap_password, int subnet) {
   Serial.begin(115200);
   
   // Инициализация EEPROM
@@ -15,6 +25,14 @@ void WiFiManager::begin() {
   // Загрузка настроек из EEPROM
   loadSettings();
   
+  // Обновляем настройки переданными параметрами
+  strlcpy(settings.ap_ssid, ap_ssid, sizeof(settings.ap_ssid));
+  strlcpy(settings.ap_password, ap_password, sizeof(settings.ap_password));
+  settings.subnet = subnet;
+  
+  // Сохраняем обновленные настройки
+  saveSettings();
+  
   // Запуск WiFi в зависимости от настроек
   setupWiFi();
   
@@ -22,6 +40,8 @@ void WiFiManager::begin() {
   setupWebServer();
   
   Serial.println("WiFi Manager started");
+  Serial.println("AP SSID: " + String(settings.ap_ssid));
+  Serial.println("Subnet: 192.168." + String(settings.subnet) + ".1");
 }
 
 void WiFiManager::handleClient() {
@@ -63,6 +83,7 @@ void WiFiManager::setupWiFi() {
   }
 }
 
+// Остальной код остается без изменений...
 void WiFiManager::connectToWiFi() {
   if (strlen(settings.sta_ssid) > 0) {
     Serial.println("Connecting to WiFi: " + String(settings.sta_ssid));
@@ -116,10 +137,7 @@ void WiFiManager::setupWebServer() {
   Serial.println("HTTP server started");
 }
 
-// Остальной код Wifi_ESP8266.cpp остается без изменений...
-// [Все остальные методы остаются такими же как в предыдущей версии]
-
-// HTML генерация (все функции getHTMLHeader, getJavaScript и т.д. остаются без изменений)
+// Все остальные методы остаются без изменений...
 String WiFiManager::getHTMLHeader() {
   return R"=====(
 <!DOCTYPE html>
@@ -160,10 +178,263 @@ String WiFiManager::getHTMLHeader() {
 }
 
 String WiFiManager::getJavaScript() {
-  // JavaScript код остается без изменений
   return R"=====(
     <script>
-        // ... весь JavaScript код из предыдущей версии
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+            
+            if (tabName === 'Status') {
+                loadConnectedDevices();
+            } else if (tabName === 'APSettings') {
+                loadAPSettings();
+            } else if (tabName === 'WiFiScan') {
+                loadWiFiStatus();
+                scanWiFi();
+            } else if (tabName === 'DeviceConfig') {
+                loadDeviceConfig();
+            } else if (tabName === 'DeviceControl') {
+                loadDeviceControl();
+            }
+        }
+
+        function loadConnectedDevices() {
+            fetch('/api/connected-devices')
+                .then(response => response.json())
+                .then(data => {
+                    let table = '<table><tr><th>IP Адрес</th><th>MAC Адрес</th><th>Имя устройства</th><th>Комментарий</th><th>Действия</th></tr>';
+                    data.devices.forEach(device => {
+                        table += `<tr>
+                            <td>${device.ip}</td>
+                            <td>${device.mac}</td>
+                            <td>${device.device_name || ''}</td>
+                            <td>${device.device_comment || ''}</td>
+                            <td><button onclick="showDeviceInfo('${device.mac}', '${device.device_name || ''}', '${device.device_comment || ''}')">Информация об устройстве</button></td>
+                        </tr>`;
+                    });
+                    table += '</table>';
+                    document.getElementById('connectedDevicesTable').innerHTML = table;
+                });
+        }
+
+        function showDeviceInfo(mac, name, comment) {
+            document.getElementById('modalDeviceMac').value = mac;
+            document.getElementById('modalDeviceName').value = name || '';
+            document.getElementById('modalDeviceComment').value = comment || '';
+            document.getElementById('deviceInfoModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('deviceInfoModal').style.display = 'none';
+        }
+
+        function saveDeviceInfo() {
+            const mac = document.getElementById('modalDeviceMac').value;
+            const name = document.getElementById('modalDeviceName').value;
+            const comment = document.getElementById('modalDeviceComment').value;
+            
+            fetch('/api/device-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mac: mac, device_name: name, device_comment: comment })
+            }).then(() => {
+                closeModal();
+                loadConnectedDevices();
+            });
+        }
+
+        function loadAPSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('apSsid').value = settings.ap_ssid || '';
+                    document.getElementById('apPassword').value = settings.ap_password || '';
+                    
+                    const subnetSelect = document.getElementById('subnet');
+                    subnetSelect.innerHTML = '';
+                    for (let i = 1; i <= 255; i++) {
+                        const option = document.createElement('option');
+                        option.value = i;
+                        option.textContent = '192.168.' + i + '.1';
+                        if (i === (settings.subnet || 4)) {
+                            option.selected = true;
+                        }
+                        subnetSelect.appendChild(option);
+                    }
+                });
+        }
+
+        function saveAPSettings() {
+            const settings = {
+                ap_ssid: document.getElementById('apSsid').value,
+                ap_password: document.getElementById('apPassword').value,
+                subnet: parseInt(document.getElementById('subnet').value)
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            }).then(() => alert('Настройки точки доступа сохранены'));
+        }
+
+        function scanWiFi() {
+            fetch('/api/wifi-scan')
+                .then(response => response.json())
+                .then(data => {
+                    let networksHTML = '<h3>Доступные сети:</h3>';
+                    data.networks.forEach(network => {
+                        const encryption = network.encryption === 7 ? 'Open' : 'Secured';
+                        networksHTML += `
+                            <div class="wifi-network">
+                                <strong>${network.ssid}</strong><br>
+                                Сигнал: ${network.rssi}dBm | Защита: ${encryption}<br>
+                                <input type="password" id="password_${network.ssid.replace(/[^a-zA-Z0-9]/g, '_')}" placeholder="Пароль" style="width: 200px; margin: 5px 0;">
+                                <button onclick="connectToNetwork('${network.ssid}', ${network.encryption})">Подключиться</button>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('wifiNetworks').innerHTML = networksHTML;
+                });
+        }
+
+        function connectToNetwork(ssid, encryption) {
+            const passwordId = 'password_' + ssid.replace(/[^a-zA-Z0-9]/g, '_');
+            const password = document.getElementById(passwordId).value;
+            
+            if (encryption !== 7 && !password) {
+                alert('Для защищенной сети необходим пароль');
+                return;
+            }
+            
+            const connectionData = {
+                ssid: ssid,
+                password: password
+            };
+            
+            fetch('/api/wifi-connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(connectionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Подключение к сети ' + ssid + ' выполнено');
+                loadWiFiStatus();
+            })
+            .catch(error => {
+                alert('Ошибка подключения к сети');
+            });
+        }
+
+        function disconnectFromWiFi() {
+            if (confirm('Отключиться от текущей WiFi сети?')) {
+                fetch('/api/wifi-disconnect', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Отключено от WiFi сети');
+                        loadWiFiStatus();
+                        scanWiFi();
+                    });
+            }
+        }
+
+        function loadWiFiStatus() {
+            fetch('/api/wifi-status')
+                .then(response => response.json())
+                .then(data => {
+                    let statusHTML = '';
+                    if (data.connected) {
+                        statusHTML = `
+                            <div class="connection-status connected">
+                                <strong>Подключено к WiFi</strong><br>
+                                Сеть: ${data.ssid}<br>
+                                IP: ${data.ip}<br>
+                                Сигнал: ${data.rssi}dBm
+                            </div>
+                            <button onclick="disconnectFromWiFi()" style="background-color: #f44336;">Отключиться от точки доступа</button>
+                        `;
+                    } else {
+                        statusHTML = `
+                            <div class="connection-status disconnected">
+                                <strong>Не подключено к WiFi</strong>
+                            </div>
+                        `;
+                    }
+                    document.getElementById('wifiStatus').innerHTML = statusHTML;
+                });
+        }
+
+        function loadDeviceConfig() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('deviceName').value = settings.device_name || '';
+                    document.getElementById('deviceComment').value = settings.device_comment || '';
+                });
+        }
+
+        function saveDeviceConfig() {
+            const config = {
+                device_name: document.getElementById('deviceName').value,
+                device_comment: document.getElementById('deviceComment').value
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            }).then(() => alert('Настройки устройства сохранены'));
+        }
+
+        function loadDeviceControl() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('apModeEnabled').checked = settings.ap_mode_enabled || false;
+                    document.getElementById('clientModeEnabled').checked = settings.client_mode_enabled || false;
+                });
+        }
+
+        function saveDeviceControl() {
+            const control = {
+                ap_mode_enabled: document.getElementById('apModeEnabled').checked,
+                client_mode_enabled: document.getElementById('clientModeEnabled').checked
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(control)
+            }).then(() => alert('Настройки управления сохранены'));
+        }
+
+        function clearSettings() {
+            if (confirm('Вы уверены, что хотите очистить все настройки?')) {
+                fetch('/api/clear-settings', { method: 'POST' })
+                    .then(() => alert('Настройки очищены'));
+            }
+        }
+
+        function restartDevice() {
+            if (confirm('Перезагрузить устройство?')) {
+                fetch('/api/restart', { method: 'POST' });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConnectedDevices();
+            loadAPSettings();
+        });
     </script>
 )=====";
 }

@@ -1,24 +1,19 @@
 #include "Wifi_ESP8266.h"
 
-// Ваши собственные обработчики
-void handleGetSettings() {
-  // Ваша кастомная логика для получения настроек
-  String response = "{\"custom\":\"settings\"}";
-  wifiManager.getServer().send(200, "application/json", response);
-}
-
-void handleCustomRoute() {
-  // Обработка кастомного маршрута
-  wifiManager.getServer().send(200, "text/plain", "Custom route response");
-}
-
 void setup() {
-  // Инициализация WiFi модуля
-  wifiManager.begin();
+  // 1. Инициализация с настройками по умолчанию
+  // wifiManager.begin();
   
-  // Добавление кастомных маршрутов к server из основного скетча
-  wifiManager.getServer().on("/api/custom-settings", HTTP_GET, handleGetSettings);
-  wifiManager.getServer().on("/custom", HTTP_GET, handleCustomRoute);
+  // 2. Инициализация с именем и паролем точки доступа
+  wifiManager.begin("MyApp", "MyPassword123");
+  
+  // 3. Инициализация с именем, паролем и подсетью
+  // wifiManager.begin("MyApp", "MyPassword123", 10);  // 192.168.10.1
+  
+  // Добавление кастомных маршрутов
+  wifiManager.getServer().on("/api/custom", HTTP_GET, []() {
+    wifiManager.getServer().send(200, "text/plain", "Custom route");
+  });
   
   // Ваш остальной код setup
   // ...
@@ -31,12 +26,8 @@ void loop() {
   // Обновление состояния WiFi модуля
   wifiManager.update();
   
-  // Пример использования доступа к server
-  WiFiClient client = wifiManager.getServer().client();
-  // Работа с клиентом...
-  
   // Ваш основной код loop
   // ...
   
-  delay(10); // Небольшая задержка для стабильности
+  delay(10);
 }
