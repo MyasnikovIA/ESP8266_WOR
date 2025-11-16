@@ -1,44 +1,12 @@
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
-#include <EEPROM.h>
-#include <ArduinoJson.h>
-#include <WiFiUdp.h>
+#include "Wifi_ESP8266.h"
 
-// Структура для хранения настроек
-struct Settings {
-  char ap_ssid[32] = "VR_APP_ESP";
-  char ap_password[32] = "12345678";
-  char device_name[32] = "ESP8266_Device";
-  char device_comment[64] = "Default Comment";
-  int subnet = 4;
-  bool ap_mode_enabled = true;
-  bool client_mode_enabled = false;
-  char sta_ssid[32] = "";
-  char sta_password[32] = "";
-};
+WiFiManager wifiManager;
 
-// Структура для информации о подключенных устройствах
-struct ConnectedDevice {
-  String ip;
-  String mac;
-  String device_name;
-  String device_comment;
-};
+WiFiManager::WiFiManager() : server(80) {
+  // Конструктор
+}
 
-Settings settings;
-ESP8266WebServer server(80);
-
-// Для хранения информации о подключенных устройствах
-ConnectedDevice connectedDevices[10];
-int connectedDevicesCount = 0;
-
-// Адреса в EEPROM для хранения настроек
-const int EEPROM_SIZE = 512;
-const int SETTINGS_ADDR = 0;
-
-void setup() {
+void WiFiManager::begin() {
   Serial.begin(115200);
   
   // Инициализация EEPROM
@@ -53,12 +21,14 @@ void setup() {
   // Настройка веб-сервера
   setupWebServer();
   
-  Serial.println("Device started");
+  Serial.println("WiFi Manager started");
 }
 
-void loop() {
+void WiFiManager::handleClient() {
   server.handleClient();
-  
+}
+
+void WiFiManager::update() {
   // Обновление списка подключенных устройств каждые 5 секунд
   static unsigned long lastUpdate = 0;
   if (millis() - lastUpdate > 5000) {
@@ -67,7 +37,7 @@ void loop() {
   }
 }
 
-void setupWiFi() {
+void WiFiManager::setupWiFi() {
   if (settings.ap_mode_enabled) {
     String ap_ssid = String(settings.ap_ssid);
     String ap_ip = "192.168." + String(settings.subnet) + ".1";
@@ -93,7 +63,7 @@ void setupWiFi() {
   }
 }
 
-void connectToWiFi() {
+void WiFiManager::connectToWiFi() {
   if (strlen(settings.sta_ssid) > 0) {
     Serial.println("Connecting to WiFi: " + String(settings.sta_ssid));
     WiFi.begin(settings.sta_ssid, settings.sta_password);
@@ -114,40 +84,40 @@ void connectToWiFi() {
   }
 }
 
-void disconnectFromWiFi() {
+void WiFiManager::disconnectFromWiFi() {
   WiFi.disconnect();
   delay(1000);
   Serial.println("Disconnected from WiFi");
 }
 
-void setupWebServer() {
+void WiFiManager::setupWebServer() {
   // Основные маршруты
-  server.on("/", handleRoot);
-  server.on("/settings", handleSettings);
-  server.on("/wifi-scan", handleWifiScan);
-  server.on("/device-config", handleDeviceConfig);
-  server.on("/device-control", handleDeviceControl);
+  server.on("/", std::bind(&WiFiManager::handleRoot, this));
+  server.on("/settings", std::bind(&WiFiManager::handleRoot, this));
+  server.on("/wifi-scan", std::bind(&WiFiManager::handleRoot, this));
+  server.on("/device-config", std::bind(&WiFiManager::handleRoot, this));
+  server.on("/device-control", std::bind(&WiFiManager::handleRoot, this));
   
   // API маршруты
-  server.on("/api/settings", HTTP_GET, handleGetSettings);
-  server.on("/api/settings", HTTP_POST, handlePostSettings);
-  server.on("/api/wifi-scan", HTTP_GET, handleApiWifiScan);
-  server.on("/api/connected-devices", HTTP_GET, handleApiConnectedDevices);
-  server.on("/api/device-info", HTTP_POST, handleApiDeviceInfo);
-  server.on("/api/clear-settings", HTTP_POST, handleApiClearSettings);
-  server.on("/api/restart", HTTP_POST, handleApiRestart);
-  server.on("/api/wifi-connect", HTTP_POST, handleApiWifiConnect);
-  server.on("/api/wifi-disconnect", HTTP_POST, handleApiWifiDisconnect);
-  server.on("/api/wifi-status", HTTP_GET, handleApiWifiStatus);
+  server.on("/api/settings", HTTP_GET, std::bind(&WiFiManager::handleGetSettings, this));
+  server.on("/api/settings", HTTP_POST, std::bind(&WiFiManager::handlePostSettings, this));
+  server.on("/api/wifi-scan", HTTP_GET, std::bind(&WiFiManager::handleApiWifiScan, this));
+  server.on("/api/connected-devices", HTTP_GET, std::bind(&WiFiManager::handleApiConnectedDevices, this));
+  server.on("/api/device-info", HTTP_POST, std::bind(&WiFiManager::handleApiDeviceInfo, this));
+  server.on("/api/clear-settings", HTTP_POST, std::bind(&WiFiManager::handleApiClearSettings, this));
+  server.on("/api/restart", HTTP_POST, std::bind(&WiFiManager::handleApiRestart, this));
+  server.on("/api/wifi-connect", HTTP_POST, std::bind(&WiFiManager::handleApiWifiConnect, this));
+  server.on("/api/wifi-disconnect", HTTP_POST, std::bind(&WiFiManager::handleApiWifiDisconnect, this));
+  server.on("/api/wifi-status", HTTP_GET, std::bind(&WiFiManager::handleApiWifiStatus, this));
   
-  server.onNotFound(handleNotFound);
+  server.onNotFound(std::bind(&WiFiManager::handleNotFound, this));
   
   server.begin();
   Serial.println("HTTP server started");
 }
 
-// Фрагменты HTML страницы
-String getHTMLHeader() {
+// HTML генерация (все функции getHTMLHeader, getJavaScript и т.д. остаются без изменений)
+String WiFiManager::getHTMLHeader() {
   return R"=====(
 <!DOCTYPE html>
 <html>
@@ -186,7 +156,7 @@ String getHTMLHeader() {
 )=====";
 }
 
-String getJavaScript() {
+String WiFiManager::getJavaScript() {
   return R"=====(
     <script>
         function openTab(evt, tabName) {
@@ -448,7 +418,7 @@ String getJavaScript() {
 )=====";
 }
 
-String getHTMLBodyStart() {
+String WiFiManager::getHTMLBodyStart() {
   return R"=====(
 </head>
 <body>
@@ -465,7 +435,7 @@ String getHTMLBodyStart() {
 )=====";
 }
 
-String getStatusTab() {
+String WiFiManager::getStatusTab() {
   return R"=====(
         <div id="Status" class="tabcontent" style="display: block;">
             <h2>Список подключенных устройств</h2>
@@ -474,7 +444,7 @@ String getStatusTab() {
 )=====";
 }
 
-String getAPSettingsTab() {
+String WiFiManager::getAPSettingsTab() {
   return R"=====(
         <div id="APSettings" class="tabcontent">
             <h2>Настройки точки доступа</h2>
@@ -495,7 +465,7 @@ String getAPSettingsTab() {
 )=====";
 }
 
-String getWiFiScanTab() {
+String WiFiManager::getWiFiScanTab() {
   return R"=====(
         <div id="WiFiScan" class="tabcontent">
             <h2>Сканирование WiFi сетей</h2>
@@ -507,7 +477,7 @@ String getWiFiScanTab() {
 )=====";
 }
 
-String getDeviceConfigTab() {
+String WiFiManager::getDeviceConfigTab() {
   return R"=====(
         <div id="DeviceConfig" class="tabcontent">
             <h2>Настройки устройства</h2>
@@ -524,7 +494,7 @@ String getDeviceConfigTab() {
 )=====";
 }
 
-String getDeviceControlTab() {
+String WiFiManager::getDeviceControlTab() {
   return R"=====(
         <div id="DeviceControl" class="tabcontent">
             <h2>Управление устройством</h2>
@@ -547,7 +517,7 @@ String getDeviceControlTab() {
 )=====";
 }
 
-String getModalWindow() {
+String WiFiManager::getModalWindow() {
   return R"=====(
         <!-- Модальное окно для информации об устройстве -->
         <div id="deviceInfoModal" class="modal">
@@ -572,7 +542,7 @@ String getModalWindow() {
 )=====";
 }
 
-void handleRoot() {
+void WiFiManager::handleRoot() {
   WiFiClient client = server.client();
   
   // Отправляем HTTP заголовок
@@ -594,12 +564,8 @@ void handleRoot() {
   
   client.stop();
 }
-void handleSettings() { handleRoot(); }
-void handleWifiScan() { handleRoot(); }
-void handleDeviceConfig() { handleRoot(); }
-void handleDeviceControl() { handleRoot(); }
 
-void handleGetSettings() {
+void WiFiManager::handleGetSettings() {
   DynamicJsonDocument doc(1024);
   doc["ap_ssid"] = settings.ap_ssid;
   doc["ap_password"] = settings.ap_password;
@@ -616,7 +582,7 @@ void handleGetSettings() {
   server.send(200, "application/json", response);
 }
 
-void handlePostSettings() {
+void WiFiManager::handlePostSettings() {
   if (server.hasArg("plain")) {
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, server.arg("plain"));
@@ -637,7 +603,7 @@ void handlePostSettings() {
   }
 }
 
-void handleApiWifiScan() {
+void WiFiManager::handleApiWifiScan() {
   int n = WiFi.scanNetworks();
   DynamicJsonDocument doc(2048);
   JsonArray networks = doc.createNestedArray("networks");
@@ -655,7 +621,7 @@ void handleApiWifiScan() {
   server.send(200, "application/json", response);
 }
 
-void handleApiWifiConnect() {
+void WiFiManager::handleApiWifiConnect() {
   if (server.hasArg("plain")) {
     DynamicJsonDocument doc(256);
     deserializeJson(doc, server.arg("plain"));
@@ -678,7 +644,7 @@ void handleApiWifiConnect() {
   }
 }
 
-void handleApiWifiDisconnect() {
+void WiFiManager::handleApiWifiDisconnect() {
   disconnectFromWiFi();
   
   // Очищаем сохраненные учетные данные
@@ -690,7 +656,7 @@ void handleApiWifiDisconnect() {
   server.send(200, "application/json", "{\"status\":\"disconnected\"}");
 }
 
-void handleApiWifiStatus() {
+void WiFiManager::handleApiWifiStatus() {
   DynamicJsonDocument doc(256);
   
   if (WiFi.status() == WL_CONNECTED) {
@@ -708,7 +674,7 @@ void handleApiWifiStatus() {
   server.send(200, "application/json", response);
 }
 
-void handleApiConnectedDevices() {
+void WiFiManager::handleApiConnectedDevices() {
   updateConnectedDevices();
   
   DynamicJsonDocument doc(2048);
@@ -731,7 +697,7 @@ void handleApiConnectedDevices() {
   server.send(200, "application/json", response);
 }
 
-void handleApiDeviceInfo() {
+void WiFiManager::handleApiDeviceInfo() {
   if (server.hasArg("plain")) {
     DynamicJsonDocument doc(256);
     deserializeJson(doc, server.arg("plain"));
@@ -755,7 +721,7 @@ void handleApiDeviceInfo() {
   }
 }
 
-void handleApiClearSettings() {
+void WiFiManager::handleApiClearSettings() {
   // Сброс настроек к значениям по умолчанию
   strlcpy(settings.ap_ssid, "VR_APP_ESP", sizeof(settings.ap_ssid));
   strlcpy(settings.ap_password, "12345678", sizeof(settings.ap_password));
@@ -772,13 +738,13 @@ void handleApiClearSettings() {
   server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-void handleApiRestart() {
+void WiFiManager::handleApiRestart() {
   server.send(200, "application/json", "{\"status\":\"restarting\"}");
   delay(1000);
   ESP.restart();
 }
 
-void handleNotFound() {
+void WiFiManager::handleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
@@ -795,7 +761,7 @@ void handleNotFound() {
   server.send(404, "text/plain", message);
 }
 
-void loadSettings() {
+void WiFiManager::loadSettings() {
   EEPROM.get(SETTINGS_ADDR, settings);
   
   // Проверка валидности загруженных настроек
@@ -804,12 +770,12 @@ void loadSettings() {
   }
 }
 
-void saveSettings() {
+void WiFiManager::saveSettings() {
   EEPROM.put(SETTINGS_ADDR, settings);
   EEPROM.commit();
 }
 
-void updateConnectedDevices() {
+void WiFiManager::updateConnectedDevices() {
   connectedDevicesCount = 0;
   
   // Получаем список подключенных станций
@@ -826,7 +792,7 @@ void updateConnectedDevices() {
   wifi_softap_free_station_info();
 }
 
-String macToString(uint8_t* mac) {
+String WiFiManager::macToString(uint8_t* mac) {
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
