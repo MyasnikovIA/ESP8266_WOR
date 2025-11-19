@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket клиент для ESP8266</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .control-panel {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .messages {
+            border: 1px solid #ddd;
+            height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #fafafa;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .message-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .message-incoming {
+            color: #0066cc;
+        }
+        
+        .message-outgoing {
+            color: #009933;
+        }
+        
+        .message-system {
+            color: #666;
+            font-style: italic;
+        }
+        
+        input, button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        input {
+            width: 300px;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .command-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin: 10px 0;
+        }
+        
+        .command-btn {
+            background-color: #28a745;
+        }
+        
+        .command-btn:hover {
+            background-color: #218838;
+        }
+        
+        .disconnect-btn {
+            background-color: #dc3545;
+        }
+        
+        .disconnect-btn:hover {
+            background-color: #c82333;
+        }
+        
+        .config-section {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        
+        label {
+            display: block;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket клиент для ESP8266</h1>
+        
+        <div class="config-section">
+            <label for="wsUrl">WebSocket URL:</label>
+            <input type="text" id="wsUrl" value="ws://192.168.4.1:81/api/web_socket" style="width: 400px;">
+            <button onclick="updateConnection()">Обновить подключение</button>
+        </div>
+        
+        <div id="status" class="status disconnected">Отключено</div>
+        
+        <div class="control-panel">
+            <button id="connectBtn" onclick="connectWebSocket()">Подключиться</button>
+            <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Отключиться</button>
+            <button onclick="clearMessages()">Очистить сообщения</button>
+        </div>
+        
+        <div class="command-buttons">
+            <button class="command-btn" onclick="sendCommand('PING')">PING</button>
+            <button class="command-btn" onclick="sendCommand('TIME')">Время</button>
+            <button class="command-btn" onclick="sendCommand('STATUS')">Статус WiFi</button>
+            <button class="command-btn" onclick="sendCommand('GET_TEMP')">Температура</button>
+            <button class="command-btn" onclick="sendCommand('GET_HUMIDITY')">Влажность</button>
+        </div>
+        
+        <div>
+            <input type="text" id="messageInput" placeholder="Введите сообщение или команду..." style="width: 400px;">
+            <button onclick="sendCustomMessage()">Отправить</button>
+            <button onclick="sendRandomData()">Случайные данные</button>
+        </div>
+        
+        <div class="messages" id="messages"></div>
+        
+        <div class="config-section">
+            <h3>Статистика:</h3>
+            <p>Получено сообщений: <span id="messageCount">0</span></p>
+            <p>Время подключения: <span id="connectionTime">0</span> сек.</p>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        let connectionStartTime = 0;
+        let connectionTimer = null;
+
+        function updateConnection() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                disconnectWebSocket();
+                setTimeout(connectWebSocket, 500);
+            }
+        }
+
+        function connectWebSocket() {
+            const wsUrl = document.getElementById('wsUrl').value;
+            
+            if (!wsUrl) {
+                addMessage('Ошибка: URL WebSocket не указан', 'system');
+                return;
+            }
+            
+            updateStatus('connecting', 'Подключение...');
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function(event) {
+                    updateStatus('connected', 'Подключено к ESP8266');
+                    updateButtons(true);
+                    connectionStartTime = Date.now();
+                    startConnectionTimer();
+                    addMessage('WebSocket подключен к ' + wsUrl, 'system');
+                };
+                
+                ws.onclose = function(event) {
+                    updateStatus('disconnected', 'Отключено');
+                    updateButtons(false);
+                    stopConnectionTimer();
+                    addMessage('WebSocket отключен. Код: ' + event.code + ', причина: ' + event.reason, 'system');
+                };
+                
+                ws.onmessage = function(event) {
+                    messageCount++;
+                    document.getElementById('messageCount').textContent = messageCount;
+                    addMessage('ESP: ' + event.data, 'incoming');
+                    
+                    // Автоматическое обновление времени подключения при получении TIME команды
+                    if (event.data.includes('Time:')) {
+                        updateConnectionTime();
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    updateStatus('disconnected', 'Ошибка подключения');
+                    addMessage('Ошибка WebSocket: ' + error, 'system');
+                };
+                
+            } catch (error) {
+                addMessage('Ошибка создания WebSocket: ' + error, 'system');
+                updateStatus('disconnected', 'Ошибка подключения');
+            }
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            updateButtons(false);
+            stopConnectionTimer();
+        }
+
+        function sendCommand(command) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(command);
+                addMessage('Вы: ' + command, 'outgoing');
+            } else {
+                addMessage('Ошибка: WebSocket не подключен', 'system');
+            }
+        }
+
+        function sendCustomMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (message) {
+                sendCommand(message);
+                messageInput.value = '';
+            }
+        }
+
+        function sendRandomData() {
+            const commands = ['PING', 'TIME', 'STATUS', 'GET_TEMP', 'GET_HUMIDITY', 'HELLO', 'TEST'];
+            const randomCommand = commands[Math.floor(Math.random() * commands.length)];
+            sendCommand(randomCommand);
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+            messageCount = 0;
+            document.getElementById('messageCount').textContent = '0';
+        }
+
+        function addMessage(text, type = 'system') {
+            const messagesDiv = document.getElementById('messages');
+            const messageItem = document.createElement('div');
+            messageItem.className = `message-item message-${type}`;
+            messageItem.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
+            messagesDiv.appendChild(messageItem);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(status, text) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = text;
+        }
+
+        function updateButtons(connected) {
+            document.getElementById('connectBtn').disabled = connected;
+            document.getElementById('disconnectBtn').disabled = !connected;
+        }
+
+        function startConnectionTimer() {
+            connectionTimer = setInterval(updateConnectionTime, 1000);
+        }
+
+        function stopConnectionTimer() {
+            if (connectionTimer) {
+                clearInterval(connectionTimer);
+                connectionTimer = null;
+            }
+        }
+
+        function updateConnectionTime() {
+            if (connectionStartTime > 0) {
+                const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+                document.getElementById('connectionTime').textContent = elapsed;
+            }
+        }
+
+        // Автоподключение при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Автофокус на поле ввода
+            document.getElementById('messageInput').focus();
+            
+            // Обработка нажатия Enter в поле ввода
+            document.getElementById('messageInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendCustomMessage();
+                }
+            });
+            
+            // Периодическая проверка состояния подключения
+            setInterval(function() {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    // Автоматический пинг для поддержания соединения
+                    if (Math.random() < 0.1) { // 10% chance
+                        sendCommand('PING');
+                    }
+                }
+            }, 30000); // Каждые 30 секунд
+        });
+    </script>
+</body>
+</html>

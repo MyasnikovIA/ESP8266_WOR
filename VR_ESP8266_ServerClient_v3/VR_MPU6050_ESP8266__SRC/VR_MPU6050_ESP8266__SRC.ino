@@ -9,7 +9,7 @@ Adafruit_MPU6050 mpu;
 
 // WiFi credentials
 const char* ssid = "MyApp";
-const char* password = "MyPassword123";
+const char* password = "12345678";
 
 // Новое имя для ESP8266
 String newHostname = "VR_Head_Hom_001";
@@ -603,11 +603,13 @@ void setup() {
   Serial.begin(115200);
   WiFi.hostname(newHostname.c_str());
   WiFi.begin(ssid, password);
+  Serial.println("");
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.print(".");
   }
+  Serial.println("");
   Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
   
   Wire.begin();

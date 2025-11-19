@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Минимальный WebSocket клиент</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        #status { padding: 10px; margin: 10px 0; }
+        .connected { background: #90EE90; }
+        .disconnected { background: #FFB6C1; }
+        #messages { border: 1px solid #ccc; height: 200px; overflow-y: scroll; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h2>WebSocket клиент для ESP8266</h2>
+    
+    <div>
+        <input type="text" id="wsUrl" value="ws://192.168.4.1:81/api/web_socket" size="40">
+        <button onclick="connect()">Подключиться</button>
+        <button onclick="disconnect()">Отключиться</button>
+    </div>
+    
+    <div id="status" class="disconnected">Отключено</div>
+    
+    <div>
+        <input type="text" id="message" placeholder="Сообщение" size="30">
+        <button onclick="send()">Отправить</button>
+        <button onclick="send('PING')">PING</button>
+        <button onclick="send('TIME')">TIME</button>
+    </div>
+    
+    <div id="messages"></div>
+
+    <script>
+        let ws = null;
+        
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                document.getElementById('status').className = 'connected';
+                document.getElementById('status').textContent = 'Подключено';
+                addMessage('✓ Подключено');
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('status').className = 'disconnected';
+                document.getElementById('status').textContent = 'Отключено';
+                addMessage('✗ Отключено');
+            };
+            
+            ws.onmessage = (event) => {
+                addMessage('← ' + event.data);
+            };
+            
+            ws.onerror = (error) => {
+                addMessage('⚠ Ошибка: ' + error);
+            };
+        }
+        
+        function disconnect() {
+            if (ws) ws.close();
+        }
+        
+        function send(customMsg) {
+            const msg = customMsg || document.getElementById('message').value;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(msg);
+                addMessage('→ ' + msg);
+                if (!customMsg) document.getElementById('message').value = '';
+            }
+        }
+        
+        function addMessage(text) {
+            const messages = document.getElementById('messages');
+            messages.innerHTML += '<div>' + new Date().toLocaleTimeString() + ' ' + text + '</div>';
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        // Автоподключение
+        connect();
+    </script>
+</body>
+</html>
