@@ -3,6 +3,9 @@
 #include <ArduinoJson.h>
 #include <EEPROM.h>
 
+String apSSID = "MyApp";
+String apPassword = "12345678";
+
 ESP8266WebServer server(80);
 
 // Структура для хранения информации о клиентах
@@ -32,8 +35,7 @@ struct ClientData {
 // Хранилище клиентов
 ClientInfo clients[10];
 int clientCount = 0;
-String apSSID = "MyApp";
-String apPassword = "12345678";
+
 
 IPAddress apIP(192, 168, 4, 1);
 IPAddress apGateway(192, 168, 4, 1);
