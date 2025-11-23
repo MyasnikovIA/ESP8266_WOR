@@ -5,6 +5,7 @@
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
 
 // Настройки WiFi сети
 const char* ssid = "ESP8266_AP";
@@ -39,6 +40,13 @@ const unsigned long calibrationTime = 3000;
 // Нулевая точка
 float zeroPitch = 0, zeroRoll = 0, zeroYaw = 0;
 bool zeroSet = false;
+
+// EEPROM addresses for zero point storage
+const int EEPROM_SIZE = 512;
+const int ZERO_PITCH_ADDR = 0;
+const int ZERO_ROLL_ADDR = sizeof(float);
+const int ZERO_YAW_ADDR = sizeof(float) * 2;
+const int ZERO_SET_ADDR = sizeof(float) * 3;
 
 // Авто-калибровка
 bool autoCalibrationEnabled = true;
@@ -104,6 +112,53 @@ bool initializeMPU6050() {
   }
 }
 
+// Load zero point from EEPROM
+void loadZeroPoint() {
+  EEPROM.begin(EEPROM_SIZE);
+  EEPROM.get(ZERO_PITCH_ADDR, zeroPitch);
+  EEPROM.get(ZERO_ROLL_ADDR, zeroRoll);
+  EEPROM.get(ZERO_YAW_ADDR, zeroYaw);
+  
+  byte zeroFlag;
+  EEPROM.get(ZERO_SET_ADDR, zeroFlag);
+  zeroSet = (zeroFlag == 1);
+  
+  if (zeroSet) {
+    Serial.printf("📁 Loaded zero point - Pitch:%.1f° Roll:%.1f° Yaw:%.1f°\n", 
+                 zeroPitch, zeroRoll, zeroYaw);
+  }
+}
+
+// Save zero point to EEPROM
+void saveZeroPoint() {
+  zeroPitch = smoothedPitch;
+  zeroRoll = smoothedRoll;
+  zeroYaw = smoothedYaw;
+  zeroSet = true;
+  
+  EEPROM.put(ZERO_PITCH_ADDR, zeroPitch);
+  EEPROM.put(ZERO_ROLL_ADDR, zeroRoll);
+  EEPROM.put(ZERO_YAW_ADDR, zeroYaw);
+  EEPROM.put(ZERO_SET_ADDR, (byte)1);
+  EEPROM.commit();
+  
+  Serial.printf("💾 Zero point saved - Pitch:%.1f° Roll:%.1f° Yaw:%.1f°\n", 
+               zeroPitch, zeroRoll, zeroYaw);
+}
+
+// Reset zero point
+void resetZeroPoint() {
+  zeroPitch = 0;
+  zeroRoll = 0;
+  zeroYaw = 0;
+  zeroSet = false;
+  
+  EEPROM.put(ZERO_SET_ADDR, (byte)0);
+  EEPROM.commit();
+  
+  Serial.println("🔄 Zero point reset");
+}
+
 // Обработка данных сенсора
 void processSensorData() {
   if (!calibrated) {
@@ -134,12 +189,6 @@ void processSensorData() {
   roll += gyroY * deltaTime * 180.0 / PI;
   yaw += gyroZ * deltaTime * 180.0 / PI;
   
-  // Убрать комплементарный фильтр с акселерометром для pitch и roll
-  // Акселерометр ограничивает углы ±180°, поэтому используем только гироскоп
-  // float alpha = 0.96;
-  // pitch = alpha * pitch + (1.0 - alpha) * accelPitch;
-  // roll = alpha * roll + (1.0 - alpha) * accelRoll;
-  
   // Сглаживание для отображения
   smoothedPitch = smoothedPitch * (1 - smoothingFactor) + pitch * smoothingFactor;
   smoothedRoll = smoothedRoll * (1 - smoothingFactor) + roll * smoothingFactor;
@@ -152,7 +201,6 @@ void processSensorData() {
     Serial.printf("📊 Текущие углы - Pitch: %.1f°, Roll: %.1f°, Yaw: %.1f°\n", pitch, roll, yaw);
   }
 }
-
 
 // Калибровка гироскопа
 void calibrateGyro() {
@@ -195,12 +243,9 @@ void calibrateGyro() {
     Serial.println("✅ Калибровка гироскопа завершена!");
     Serial.printf("Финальные смещения - X:%.6f, Y:%.6f, Z:%.6f\n", gyroOffsetX, gyroOffsetY, gyroOffsetZ);
     Serial.printf("Обработано samples: %d\n", sampleCount);
-    
-    // Уведомление клиентов
-   // String statusMsg = "{\"type\":\"status\",\"message\":\"Калибровка завершена\"}";
-   // webSocket.broadcastTXT(statusMsg);
   }
 }
+
 // Функция для принудительного сброса углов
 void resetAllAngles() {
   pitch = 0;
@@ -249,23 +294,10 @@ float calculateRelativeAngle(float absoluteAngle, float zeroAngle) {
 
 // Установка нулевой точки
 void setZeroPoint() {
-  zeroPitch = smoothedPitch;
-  zeroRoll = smoothedRoll;
-  zeroYaw = smoothedYaw;
-  zeroSet = true;
+  saveZeroPoint();
   
   Serial.printf("💾 Нулевая точка установлена - Pitch:%.1f° Roll:%.1f° Yaw:%.1f°\n", 
                zeroPitch, zeroRoll, zeroYaw);
-}
-
-// Сброс нулевой точки
-void resetZeroPoint() {
-  zeroPitch = 0;
-  zeroRoll = 0;
-  zeroYaw = 0;
-  zeroSet = false;
-  
-  Serial.println("🔄 Нулевая точка сброшена");
 }
 
 // Сброс Yaw
@@ -296,7 +328,6 @@ void setAutoCalibration(bool enable) {
 }
 
 // Обработчик WebSocket событий
-// Обработчик WebSocket событий
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
     case WStype_DISCONNECTED:
@@ -307,10 +338,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       {
         IPAddress ip = webSocket.remoteIP(num);
         Serial.printf("✅ [%u] Подключен от %d.%d.%d.%d\n", num, ip[0], ip[1], ip[2], ip[3]);
-        
-        // Отправка приветственного сообщения
-        //String welcome = "{\"type\":\"status\",\"message\":\"Подключен к MPU6050 трекеру\"}";
-        //webSocket.sendTXT(num, welcome);
         
         // Отправка статуса калибровки
         String calStatus = "{\"type\":\"calibrationStatus\",\"calibrated\":" + String(calibrated ? "true" : "false") + "}";
@@ -361,8 +388,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         }
         else if (command == "setZero") {
           setZeroPoint();
-          //String response = "{\"type\":\"status\",\"message\":\"Нулевая точка установлена\"}";
-          //webSocket.sendTXT(num, response);
           String zeroInfo = "{\"type\":\"zeroInfo\",\"zeroPitch\":" + String(zeroPitch, 2) + 
                            ",\"zeroRoll\":" + String(zeroRoll, 2) + 
                            ",\"zeroYaw\":" + String(zeroYaw, 2) + "}";
@@ -370,8 +395,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         }
         else if (command == "resetZero") {
           resetZeroPoint();
-          //String response = "{\"type\":\"status\",\"message\":\"Нулевая точка сброшена\"}";
-          //webSocket.sendTXT(num, response);
           String zeroReset = "{\"type\":\"zeroReset\"}";
           webSocket.broadcastTXT(zeroReset);
         }
@@ -382,8 +405,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         }
         else if (command == "recalibrate") {
           recalibrate();
-          //String response = "{\"type\":\"status\",\"message\":\"Перекалибровка запущена\"}";
-          //webSocket.sendTXT(num, response);
         }
         else if (command == "setAutoCalibration") {
           bool enable = doc["enable"];
@@ -398,8 +419,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           webSocket.sendTXT(num, response);
           delay(1000);
           ESP.restart();
-        // В функции webSocketEvent в блоке WStype_TEXT добавить:
-        } else if (command == "resetAngles") {
+        }
+        else if (command == "resetAngles") {
           resetAllAngles();
           String response = "{\"type\":\"status\",\"message\":\"Все углы сброшены\"}";
           webSocket.sendTXT(num, response);
@@ -408,7 +429,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       break;
   }
 }
-
 
 // Функция для обработки главной страницы
 void handleRoot() {
@@ -428,65 +448,130 @@ void handleRoot() {
   client.println("<head>");
   client.println("<meta charset='UTF-8'>");
   client.println("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
-  client.println("<title>ESP8266 MPU6050 Demo</title>");
+  client.println("<title>ESP8266 MPU6050 VR Head Tracker</title>");
   client.println("<style>");
   client.println("body { ");
   client.println("  font-family: Arial, sans-serif; ");
-  client.println("  margin: 0; ");
-  client.println("  padding: 20px; ");
-  client.println("  background-color: #f0f0f0;");
-  client.println("  overflow-x: hidden;");
+  client.println("  margin: 0;");
+  client.println("  padding: 20px;");
+  client.println("  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);");
+  client.println("  min-height: 100vh;");
+  client.println("  color: #333;");
   client.println("}");
   client.println(".container { ");
   client.println("  max-width: 1200px; ");
   client.println("  margin: 0 auto; ");
-  client.println("  background: white; ");
+  client.println("  background: rgba(255,255,255,0.95); ");
   client.println("  padding: 20px; ");
   client.println("  border-radius: 15px; ");
-  client.println("  box-shadow: 0 0 10px rgba(0,0,0,0.1);");
+  client.println("  box-shadow: 0 8px 32px rgba(0,0,0,0.1);");
   client.println("}");
-  client.println("h1 { color: #333; text-align: center; }");
+  client.println(".header { ");
+  client.println("  text-align: center; ");
+  client.println("  margin-bottom: 30px;");
+  client.println("  background: linear-gradient(135deg, #4CAF50, #45a049);");
+  client.println("  color: white;");
+  client.println("  padding: 20px;");
+  client.println("  border-radius: 10px;");
+  client.println("}");
   client.println(".dashboard {");
   client.println("  display: grid;");
   client.println("  grid-template-columns: 1fr 1fr;");
   client.println("  gap: 20px;");
+  client.println("  margin-bottom: 20px;");
+  client.println("}");
+  client.println(".panel {");
+  client.println("  background: #f8f9fa;");
+  client.println("  padding: 20px;");
+  client.println("  border-radius: 10px;");
+  client.println("  border-left: 4px solid #4CAF50;");
+  client.println("}");
+  client.println(".visualization-panel {");
+  client.println("  grid-column: 1 / -1;");
+  client.println("  background: #2c3e50;");
+  client.println("  color: white;");
+  client.println("  padding: 20px;");
+  client.println("  border-radius: 10px;");
+  client.println("}");
+  client.println(".controls {");
+  client.println("  display: grid;");
+  client.println("  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));");
+  client.println("  gap: 10px;");
   client.println("  margin: 20px 0;");
   client.println("}");
-  client.println(".info { ");
-  client.println("  background: #e7f3ff; ");
-  client.println("  padding: 15px; ");
-  client.println("  border-radius: 8px;");
-  client.println("  border-left: 4px solid #2196F3;");
+  client.println(".btn {");
+  client.println("  padding: 12px 15px;");
+  client.println("  border: none;");
+  client.println("  border-radius: 5px;");
+  client.println("  cursor: pointer;");
+  client.println("  font-size: 14px;");
+  client.println("  font-weight: bold;");
+  client.println("  transition: all 0.3s;");
   client.println("}");
-  client.println(".sensor-data {");
-  client.println("  background: #fff3cd;");
+  client.println(".btn-primary { background: #4CAF50; color: white; }");
+  client.println(".btn-warning { background: #ff9800; color: white; }");
+  client.println(".btn-danger { background: #f44336; color: white; }");
+  client.println(".btn-info { background: #2196F3; color: white; }");
+  client.println(".btn-secondary { background: #6c757d; color: white; }");
+  client.println(".btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }");
+  client.println(".data-grid {");
+  client.println("  display: grid;");
+  client.println("  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));");
+  client.println("  gap: 15px;");
+  client.println("  margin: 20px 0;");
+  client.println("}");
+  client.println(".data-card {");
+  client.println("  background: white;");
   client.println("  padding: 15px;");
   client.println("  border-radius: 8px;");
-  client.println("  border-left: 4px solid #ffc107;");
+  client.println("  box-shadow: 0 2px 4px rgba(0,0,0,0.1);");
+  client.println("  text-align: center;");
   client.println("}");
-  client.println(".button { ");
-  client.println("  background: #4CAF50; ");
-  client.println("  color: white; ");
-  client.println("  padding: 10px 15px; ");
-  client.println("  border: none; ");
-  client.println("  border-radius: 5px; ");
-  client.println("  cursor: pointer; ");
-  client.println("  font-size: 14px;");
-  client.println("  margin: 5px;");
-  client.println("}");
-  client.println(".button:hover { background: #45a049; }");
-  client.println(".button-red { background: #f44336; }");
-  client.println(".button-red:hover { background: #da190b; }");
-  client.println(".button-blue { background: #2196F3; }");
-  client.println(".button-blue:hover { background: #1976D2; }");
-  client.println(".status { ");
-  client.println("  padding: 10px; ");
-  client.println("  margin: 10px 0; ");
-  client.println("  border-radius: 5px;");
+  client.println(".data-value {");
+  client.println("  font-size: 24px;");
   client.println("  font-weight: bold;");
+  client.println("  margin: 10px 0;");
   client.println("}");
-  client.println(".led-on { background: #4CAF50; color: white; }");
-  client.println(".led-off { background: #666; color: white; }");
+  client.println(".data-label {");
+  client.println("  font-size: 12px;");
+  client.println("  color: #666;");
+  client.println("  text-transform: uppercase;");
+  client.println("}");
+  client.println(".direction-positive { color: #4CAF50; }");
+  client.println(".direction-negative { color: #f44336; }");
+  client.println(".direction-zero { color: #ff9800; }");
+  client.println(".cube-container {");
+  client.println("  width: 300px;");
+  client.println("  height: 300px;");
+  client.println("  margin: 20px auto;");
+  client.println("  perspective: 1000px;");
+  client.println("}");
+  client.println(".cube {");
+  client.println("  width: 100%;");
+  client.println("  height: 100%;");
+  client.println("  position: relative;");
+  client.println("  transform-style: preserve-3d;");
+  client.println("  transition: transform 0.1s ease-out;");
+  client.println("}");
+  client.println(".face {");
+  client.println("  position: absolute;");
+  client.println("  width: 300px;");
+  client.println("  height: 300px;");
+  client.println("  border: 3px solid #34495e;");
+  client.println("  display: flex;");
+  client.println("  align-items: center;");
+  client.println("  justify-content: center;");
+  client.println("  font-size: 24px;");
+  client.println("  font-weight: bold;");
+  client.println("  color: white;");
+  client.println("  background: rgba(52, 152, 219, 0.8);");
+  client.println("}");
+  client.println(".front  { transform: rotateY(0deg) translateZ(150px); background: rgba(231, 76, 60, 0.8); }");
+  client.println(".back   { transform: rotateY(180deg) translateZ(150px); background: rgba(52, 152, 219, 0.8); }");
+  client.println(".right  { transform: rotateY(90deg) translateZ(150px); background: rgba(46, 204, 113, 0.8); }");
+  client.println(".left   { transform: rotateY(-90deg) translateZ(150px); background: rgba(155, 89, 182, 0.8); }");
+  client.println(".top    { transform: rotateX(90deg) translateZ(150px); background: rgba(241, 196, 15, 0.8); }");
+  client.println(".bottom { transform: rotateX(-90deg) translateZ(150px); background: rgba(230, 126, 34, 0.8); }");
   client.println(".wifi-status { ");
   client.println("  padding: 8px; ");
   client.println("  margin: 5px 0; ");
@@ -495,28 +580,6 @@ void handleRoot() {
   client.println("}");
   client.println(".connected { background: #d4edda; color: #155724; }");
   client.println(".disconnected { background: #f8d7da; color: #721c24; }");
-  client.println("#visualization {");
-  client.println("  width: 100%;");
-  client.println("  height: 400px;");
-  client.println("  background: #2c3e50;");
-  client.println("  border-radius: 8px;");
-  client.println("  margin: 20px 0;");
-  client.println("  position: relative;");
-  client.println("  overflow: hidden;");
-  client.println("}");
-  client.println(".control-panel {");
-  client.println("  display: grid;");
-  client.println("  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));");
-  client.println("  gap: 10px;");
-  client.println("  margin: 20px 0;");
-  client.println("}");
-  client.println(".data-display {");
-  client.println("  font-family: 'Courier New', monospace;");
-  client.println("  background: #f8f9fa;");
-  client.println("  padding: 10px;");
-  client.println("  border-radius: 5px;");
-  client.println("  margin: 5px 0;");
-  client.println("}");
   client.println(".websocket-status {");
   client.println("  padding: 10px;");
   client.println("  border-radius: 5px;");
@@ -526,11 +589,41 @@ void handleRoot() {
   client.println("}");
   client.println(".ws-connected { background: #d4edda; color: #155724; }");
   client.println(".ws-disconnected { background: #f8d7da; color: #721c24; }");
+  client.println(".info-section {");
+  client.println("  background: #e8f5e8;");
+  client.println("  padding: 15px;");
+  client.println("  border-radius: 8px;");
+  client.println("  margin: 15px 0;");
+  client.println("  border-left: 4px solid #4CAF50;");
+  client.println("}");
+  client.println("@media (max-width: 768px) {");
+  client.println("  .dashboard {");
+  client.println("    grid-template-columns: 1fr;");
+  client.println("  }");
+  client.println("  .cube-container {");
+  client.println("    width: 200px;");
+  client.println("    height: 200px;");
+  client.println("  }");
+  client.println("  .face {");
+  client.println("    width: 200px;");
+  client.println("    height: 200px;");
+  client.println("    font-size: 18px;");
+  client.println("  }");
+  client.println("  .front  { transform: rotateY(0deg) translateZ(100px); }");
+  client.println("  .back   { transform: rotateY(180deg) translateZ(100px); }");
+  client.println("  .right  { transform: rotateY(90deg) translateZ(100px); }");
+  client.println("  .left   { transform: rotateY(-90deg) translateZ(100px); }");
+  client.println("  .top    { transform: rotateX(90deg) translateZ(100px); }");
+  client.println("  .bottom { transform: rotateX(-90deg) translateZ(100px); }");
+  client.println("}");
   client.println("</style>");
   client.println("</head>");
   client.println("<body>");
   client.println("  <div class='container'>");
-  client.println("    <h1>🚀 ESP8266 MPU6050 Sensor Demo</h1>");
+  client.println("    <div class='header'>");
+  client.println("      <h1>🎮 MPU6050 VR Head Tracker</h1>");
+  client.println("      <p>Real-time orientation tracking with 3D visualization</p>");
+  client.println("    </div>");
   
   String wifiClass = (WiFi.status() == WL_CONNECTED) ? "connected" : "disconnected";
   String wifiStatus = getWiFiStatus() + " | " + WiFi.SSID();
@@ -543,151 +636,284 @@ void handleRoot() {
   client.println("    </div>");
   
   client.println("    <div class='dashboard'>");
-  client.println("      <div class='info'>");
-  client.println("        <h3>📊 Системная информация</h3>");
-  client.println("        <p><strong>Время работы:</strong> " + formatTime(millis() - startTime) + "</p>");
-  client.println("        <p><strong>Посетителей:</strong> " + String(visitorCount) + "</p>");
-  client.println("        <p><strong>Статус LED:</strong> " + String(ledState ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН") + "</p>");
-  client.println("        <p><strong>IP адрес:</strong> " + WiFi.localIP().toString() + "</p>");
-  client.println("        <p><strong>SSID сети:</strong> " + WiFi.SSID() + "</p>");
-  client.println("        <p><strong>Сила сигнала:</strong> " + getWiFiRSSI() + " dBm</p>");
-  client.println("        <p><strong>Чип ID:</strong> " + String(ESP.getChipId()) + "</p>");
+  client.println("      <div class='panel'>");
+  client.println("        <h3>📊 Absolute Orientation</h3>");
+  client.println("        <div class='data-grid'>");
+  client.println("          <div class='data-card'>");
+  client.println("            <div class='data-label'>Pitch (X)</div>");
+  client.println("            <div class='data-value' id='absPitch'>0.00°</div>");
+  client.println("            <div class='data-label'>Front-Back Tilt</div>");
+  client.println("          </div>");
+  client.println("          <div class='data-card'>");
+  client.println("            <div class='data-label'>Roll (Y)</div>");
+  client.println("            <div class='data-value' id='absRoll'>0.00°</div>");
+  client.println("            <div class='data-label'>Left-Right Tilt</div>");
+  client.println("          </div>");
+  client.println("          <div class='data-card'>");
+  client.println("            <div class='data-label'>Yaw (Z)</div>");
+  client.println("            <div class='data-value' id='absYaw'>0.00°</div>");
+  client.println("            <div class='data-label'>Head Rotation</div>");
+  client.println("          </div>");
+  client.println("        </div>");
   client.println("      </div>");
 
-  client.println("      <div class='sensor-data'>");
-  client.println("        <h3>🎯 Данные MPU6050</h3>");
-  client.println("        <div class='data-display'>");
-  client.println("          <div>Pitch: <span id='pitch'>0.00</span>°</div>");
-  client.println("          <div>Roll: <span id='roll'>0.00</span>°</div>");
-  client.println("          <div>Yaw: <span id='yaw'>0.00</span>°</div>");
+  client.println("      <div class='panel'>");
+  client.println("        <h3>🎯 Relative to Zero</h3>");
+  client.println("        <div class='data-grid'>");
+  client.println("          <div class='data-card'>");
+  client.println("            <div class='data-label'>Pitch</div>");
+  client.println("            <div class='data-value'>");
+  client.println("              <span id='relPitch'>0.00°</span> <span id='dirPitch' class='direction-zero'>●</span>");
+  client.println("            </div>");
+  client.println("          </div>");
+  client.println("          <div class='data-card'>");
+  client.println("            <div class='data-label'>Roll</div>");
+  client.println("            <div class='data-value'>");
+  client.println("              <span id='relRoll'>0.00°</span> <span id='dirRoll' class='direction-zero'>●</span>");
+  client.println("            </div>");
+  client.println("          </div>");
+  client.println("          <div class='data-card'>");
+  client.println("            <div class='data-label'>Yaw</div>");
+  client.println("            <div class='data-value'>");
+  client.println("              <span id='relYaw'>0.00°</span> <span id='dirYaw' class='direction-zero'>●</span>");
+  client.println("            </div>");
+  client.println("          </div>");
   client.println("        </div>");
-  client.println("        <div class='data-display'>");
-  client.println("          <div>Относительный Pitch: <span id='relPitch'>0.00</span>°</div>");
-  client.println("          <div>Относительный Roll: <span id='relRoll'>0.00</span>°</div>");
-  client.println("          <div>Относительный Yaw: <span id='relYaw'>0.00</span>°</div>");
-  client.println("        </div>");
-  client.println("        <div class='data-display'>");
-  client.println("          <div>Статус калибровки: <span id='calibrationStatus'>Калибруется...</span></div>");
-  client.println("          <div>Авто-калибровка: <span id='autoCalStatus'>Включена</span></div>");
-  client.println("          <div>Нулевая точка: <span id='zeroStatus'>Не установлена</span></div>");
+  client.println("      </div>");
+
+  client.println("      <div class='visualization-panel'>");
+  client.println("        <h3>🎮 3D Head Orientation</h3>");
+  client.println("        <div class='cube-container'>");
+  client.println("          <div class='cube' id='cube'>");
+  client.println("            <div class='face front'>FACE</div>");
+  client.println("            <div class='face back'>BACK</div>");
+  client.println("            <div class='face right'>RIGHT</div>");
+  client.println("            <div class='face left'>LEFT</div>");
+  client.println("            <div class='face top'>TOP</div>");
+  client.println("            <div class='face bottom'>BOTTOM</div>");
+  client.println("          </div>");
   client.println("        </div>");
   client.println("      </div>");
   client.println("    </div>");
 
-  client.println("    <div id='visualization'>");
-  client.println("      <canvas id='cubeCanvas' width='800' height='400'></canvas>");
+  client.println("    <div class='controls'>");
+  client.println("      <button class='btn btn-primary' onclick=\"sendCommand('setZero')\">");
+  client.println("        🎯 Set Zero Point");
+  client.println("      </button>");
+  client.println("      <button class='btn btn-warning' onclick=\"sendCommand('resetZero')\">");
+  client.println("        🔄 Reset Zero");
+  client.println("      </button>");
+  client.println("      <button class='btn btn-info' onclick=\"sendCommand('recalibrate')\">");
+  client.println("        🔧 Recalibrate");
+  client.println("      </button>");
+  client.println("      <button class='btn btn-danger' onclick=\"sendCommand('resetYaw')\">");
+  client.println("        🎯 Reset Yaw");
+  client.println("      </button>");
+  client.println("      <button class='btn btn-info' onclick=\"sendCommand('resetAngles')\">");
+  client.println("        📊 Reset All Angles");
+  client.println("      </button>");
+  client.println("      <button class='btn btn-secondary' onclick=\"sendCommand('ledOn')\">");
+  client.println("        💡 LED On");
+  client.println("      </button>");
+  client.println("      <button class='btn btn-secondary' onclick=\"sendCommand('ledOff')\">");
+  client.println("        💡 LED Off");
+  client.println("      </button>");
   client.println("    </div>");
 
-  client.println("    <div class='control-panel'>");
-  client.println("      <div>");
-  client.println("        <h4>Управление LED</h4>");
-  client.println("        <button class='button' onclick=\"sendCommand('ledOn')\">🟢 Включить LED</button>");
-  client.println("        <button class='button button-red' onclick=\"sendCommand('ledOff')\">🔴 Выключить LED</button>");
-  client.println("        <button class='button' onclick=\"sendCommand('blink')\">✨ Мигать LED</button>");
-  client.println("      </div>");
-  
-  client.println("      <div>");
-  client.println("        <h4>Управление сенсором</h4>");
-  client.println("        <button class='button button-blue' onclick=\"sendCommand('setZero')\">🎯 Установить нулевую точку</button>");
-  client.println("        <button class='button' onclick=\"sendCommand('resetZero')\">🔄 Сбросить нулевую точку</button>");
-  client.println("        <button class='button' onclick=\"sendCommand('resetYaw')\">↩️ Сбросить Yaw</button>");
-  client.println("        <button class='button' onclick=\"sendCommand('resetAngles')\">🔄 Сбросить все углы</button>");
-  client.println("      </div>");
-  
-  client.println("      <div>");
-  client.println("        <h4>Калибровка</h4>");
-  client.println("        <button class='button' onclick=\"sendCommand('recalibrate')\">⚙️ Перекалибровать</button>");
-  client.println("        <button class='button' id='autoCalBtn' onclick=\"toggleAutoCalibration()\">🔴 Выключить авто-калибровку</button>");
-  client.println("      </div>");
-  
-  client.println("      <div>");
-  client.println("        <h4>Система</h4>");
-  client.println("        <button class='button' onclick=\"location.href='/info'\">ℹ️ Информация</button>");
-  client.println("        <button class='button' onclick=\"sendCommand('restart')\">🔄 Перезагрузить</button>");
+  client.println("    <div class='info-section'>");
+  client.println("      <h4>📈 System Status</h4>");
+  client.println("      <div class='data-grid'>");
+  client.println("        <div class='data-card'>");
+  client.println("          <div class='data-label'>Device State</div>");
+  client.println("          <div class='data-value' id='deviceState'>-</div>");
+  client.println("        </div>");
+  client.println("        <div class='data-card'>");
+  client.println("          <div class='data-label'>WiFi Signal</div>");
+  client.println("          <div class='data-value' id='wifiSignal'>-</div>");
+  client.println("        </div>");
+  client.println("        <div class='data-card'>");
+  client.println("          <div class='data-label'>Zero Point</div>");
+  client.println("          <div class='data-value' id='zeroStatus'>-</div>");
+  client.println("        </div>");
+  client.println("        <div class='data-card'>");
+  client.println("          <div class='data-label'>Calibration</div>");
+  client.println("          <div class='data-value' id='calibrationStatus'>-</div>");
+  client.println("        </div>");
   client.println("      </div>");
   client.println("    </div>");
 
-  String ledClass = ledState ? "led-on" : "led-off";
+  String ledClass = ledState ? "btn-primary" : "btn-secondary";
   String ledText = ledState ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН";
-  client.println("    <div class='status " + ledClass + "'>");
-  client.println("      LED: " + ledText);
-  client.println("    </div>");
-
-  client.println("    <div style='margin-top: 30px; font-size: 14px; color: #666; text-align: center;'>");
-  client.println("      <p>ESP8266 MPU6050 Sensor | Версия 3.0</p>");
+  client.println("    <div class='info-section'>");
+  client.println("      <h4>💡 System Information</h4>");
+  client.println("      <p><strong>Время работы:</strong> " + formatTime(millis() - startTime) + "</p>");
+  client.println("      <p><strong>Посетителей:</strong> " + String(visitorCount) + "</p>");
+  client.println("      <p><strong>Статус LED:</strong> " + ledText + "</p>");
+  client.println("      <p><strong>IP адрес:</strong> " + WiFi.localIP().toString() + "</p>");
+  client.println("      <p><strong>Сила сигнала:</strong> " + getWiFiRSSI() + " dBm</p>");
   client.println("    </div>");
   client.println("  </div>");
 
   client.println("  <script>");
   client.println("    let ws = null;");
-  client.println("    let cubeCanvas, ctx;");
-  client.println("    let sensorData = { pitch: 0, roll: 0, yaw: 0, relPitch: 0, relRoll: 0, relYaw: 0 };");
-  client.println("");
+  client.println("    let cube = document.getElementById('cube');");
+  client.println("    let connectionStatus = document.getElementById('wsStatus');");
+  client.println("    ");
+  client.println("    // Orientation data history for smoothing");
+  client.println("    let orientationHistory = {");
+  client.println("      pitch: [],");
+  client.println("      roll: [],");
+  client.println("      yaw: []");
+  client.println("    };");
+  client.println("    ");
   client.println("    function connectWebSocket() {");
   client.println("      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';");
   client.println("      const wsUrl = `${protocol}//${window.location.hostname}:81`;");
   client.println("      ");
-  client.println("      ws = new WebSocket(wsUrl);");
+  client.println("      connectionStatus.textContent = '🟡 Connecting...';");
+  client.println("      connectionStatus.className = 'websocket-status ws-disconnected';");
   client.println("      ");
-  client.println("      ws.onopen = function() {");
-  client.println("        document.getElementById('wsStatus').className = 'websocket-status ws-connected';");
-  client.println("        document.getElementById('wsStatus').textContent = 'WebSocket: Connected';");
-  client.println("        console.log('WebSocket connected');");
-  client.println("      };");
-  client.println("      ");
-  client.println("      ws.onclose = function() {");
-  client.println("        document.getElementById('wsStatus').className = 'websocket-status ws-disconnected';");
-  client.println("        document.getElementById('wsStatus').textContent = 'WebSocket: Disconnected';");
-  client.println("        console.log('WebSocket disconnected');");
-  client.println("        // Попытка переподключения через 3 секунды");
-  client.println("        setTimeout(connectWebSocket, 3000);");
-  client.println("      };");
-  client.println("      ");
-  client.println("      ws.onmessage = function(event) {");
-  client.println("        try {");
-  client.println("          const data = JSON.parse(event.data);");
-  client.println("          handleWebSocketMessage(data);");
-  client.println("        } catch (e) {");
-  client.println("          console.error('Error parsing WebSocket message:', e);");
-  client.println("        }");
-  client.println("      };");
-  client.println("      ");
-  client.println("      ws.onerror = function(error) {");
-  client.println("        console.error('WebSocket error:', error);");
-  client.println("      };");
-  client.println("    }");
-  client.println("");
-  client.println("    function handleWebSocketMessage(data) {");
-  client.println("      if (data.type === 'sensorData') {");
-  client.println("        // Обновление данных сенсора");
-  client.println("        sensorData = data;");
-  client.println("        updateSensorDisplay();");
-  client.println("        drawCube();");
-  client.println("      } else if (data.type === 'status') {");
-  client.println("        console.log('Status:', data.message);");
-  client.println("        alert(data.message);");
-  client.println("      } else if (data.type === 'calibrationStatus') {");
-  client.println("        document.getElementById('calibrationStatus').textContent = data.calibrated ? 'Готов' : 'Калибруется...';");
-  client.println("      } else if (data.type === 'autoCalibrationStatus') {");
-  client.println("        const btn = document.getElementById('autoCalBtn');");
-  client.println("        btn.textContent = data.enabled ? '🔴 Выключить авто-калибровку' : '🟢 Включить авто-калибровку';");
-  client.println("        document.getElementById('autoCalStatus').textContent = data.enabled ? 'Включена' : 'Выключена';");
-  client.println("      } else if (data.type === 'zeroInfo') {");
-  client.println("        document.getElementById('zeroStatus').textContent = 'Установлена';");
-  client.println("      } else if (data.type === 'zeroReset') {");
-  client.println("        document.getElementById('zeroStatus').textContent = 'Не установлена';");
+  client.println("      try {");
+  client.println("        ws = new WebSocket(wsUrl);");
+  client.println("        ");
+  client.println("        ws.onopen = function() {");
+  client.println("          console.log('✅ WebSocket connected');");
+  client.println("          connectionStatus.textContent = '🟢 WebSocket: Connected';");
+  client.println("          connectionStatus.className = 'websocket-status ws-connected';");
+  client.println("        };");
+  client.println("        ");
+  client.println("        ws.onmessage = function(event) {");
+  client.println("          try {");
+  client.println("            const data = JSON.parse(event.data);");
+  client.println("            handleWebSocketMessage(data);");
+  client.println("          } catch (e) {");
+  client.println("            console.error('Error parsing WebSocket message:', e);");
+  client.println("          }");
+  client.println("        };");
+  client.println("        ");
+  client.println("        ws.onclose = function(event) {");
+  client.println("          console.log('❌ WebSocket disconnected');");
+  client.println("          connectionStatus.textContent = '🔴 WebSocket: Disconnected';");
+  client.println("          connectionStatus.className = 'websocket-status ws-disconnected';");
+  client.println("          setTimeout(connectWebSocket, 3000);");
+  client.println("        };");
+  client.println("        ");
+  client.println("        ws.onerror = function(error) {");
+  client.println("          console.error('WebSocket error:', error);");
+  client.println("        };");
+  client.println("        ");
+  client.println("      } catch (error) {");
+  client.println("        console.error('Failed to create WebSocket:', error);");
   client.println("      }");
   client.println("    }");
-  client.println("");
-  client.println("    function updateSensorDisplay() {");
-  client.println("      document.getElementById('pitch').textContent = sensorData.pitch.toFixed(2);");
-  client.println("      document.getElementById('roll').textContent = sensorData.roll.toFixed(2);");
-  client.println("      document.getElementById('yaw').textContent = sensorData.yaw.toFixed(2);");
-  client.println("      document.getElementById('relPitch').textContent = sensorData.relPitch.toFixed(2);");
-  client.println("      document.getElementById('relRoll').textContent = sensorData.relRoll.toFixed(2);");
-  client.println("      document.getElementById('relYaw').textContent = sensorData.relYaw.toFixed(2);");
+  client.println("    ");
+  client.println("    function handleWebSocketMessage(data) {");
+  client.println("      if (data.type === 'sensorData') {");
+  client.println("        updateDashboard(data);");
+  client.println("        update3DVisualization(data);");
+  client.println("        updateSystemStatus(data);");
+  client.println("      } else if (data.type === 'status') {");
+  client.println("        console.log('System message:', data.message);");
+  client.println("        showNotification(data.message, 'info');");
+  client.println("      } else if (data.type === 'zeroInfo') {");
+  client.println("        console.log('Zero point updated:', data);");
+  client.println("        showNotification('Zero point set successfully', 'success');");
+  client.println("        document.getElementById('zeroStatus').textContent = 'Set';");
+  client.println("        document.getElementById('zeroStatus').style.color = '#4CAF50';");
+  client.println("      } else if (data.type === 'zeroReset') {");
+  client.println("        console.log('Zero point reset');");
+  client.println("        showNotification('Zero point reset', 'info');");
+  client.println("        document.getElementById('zeroStatus').textContent = 'Not Set';");
+  client.println("        document.getElementById('zeroStatus').style.color = '#f44336';");
+  client.println("      } else if (data.type === 'calibrationStatus') {");
+  client.println("        document.getElementById('calibrationStatus').textContent = data.calibrated ? 'Calibrated' : 'Calibrating...';");
+  client.println("        document.getElementById('calibrationStatus').style.color = data.calibrated ? '#4CAF50' : '#ff9800';");
+  client.println("      }");
   client.println("    }");
-  client.println("");
+  client.println("    ");
+  client.println("    function updateDashboard(data) {");
+  client.println("      // Update absolute orientation");
+  client.println("      document.getElementById('absPitch').textContent = data.pitch.toFixed(1) + '°';");
+  client.println("      document.getElementById('absRoll').textContent = data.roll.toFixed(1) + '°';");
+  client.println("      document.getElementById('absYaw').textContent = data.yaw.toFixed(1) + '°';");
+  client.println("      ");
+  client.println("      // Update relative orientation");
+  client.println("      document.getElementById('relPitch').textContent = data.relPitch.toFixed(1) + '°';");
+  client.println("      document.getElementById('relRoll').textContent = data.relRoll.toFixed(1) + '°';");
+  client.println("      document.getElementById('relYaw').textContent = data.relYaw.toFixed(1) + '°';");
+  client.println("      ");
+  client.println("      // Update direction indicators");
+  client.println("      updateDirectionIndicator('dirPitch', data.relPitch);");
+  client.println("      updateDirectionIndicator('dirRoll', data.relRoll);");
+  client.println("      updateDirectionIndicator('dirYaw', data.relYaw);");
+  client.println("    }");
+  client.println("    ");
+  client.println("    function updateDirectionIndicator(elementId, value) {");
+  client.println("      const element = document.getElementById(elementId);");
+  client.println("      if (value > 1) {");
+  client.println("        element.textContent = '↗';");
+  client.println("        element.className = 'direction-positive';");
+  client.println("      } else if (value < -1) {");
+  client.println("        element.textContent = '↙';");
+  client.println("        element.className = 'direction-negative';");
+  client.println("      } else {");
+  client.println("        element.textContent = '●';");
+  client.println("        element.className = 'direction-zero';");
+  client.println("      }");
+  client.println("    }");
+  client.println("    ");
+  client.println("    function update3DVisualization(data) {");
+  client.println("      // Apply smooth rotation to the cube");
+  client.println("      const smoothPitch = smoothValue('pitch', data.relPitch);");
+  client.println("      const smoothRoll = smoothValue('roll', data.relRoll);");
+  client.println("      const smoothYaw = smoothValue('yaw', data.relYaw);");
+  client.println("      ");
+  client.println("      // Correct rotation logic for VR head tracking:");
+  client.println("      // - Pitch rotates around X axis (forward/backward tilt)");
+  client.println("      // - Yaw rotates around Y axis (head rotation left/right)");
+  client.println("      // - Roll rotates around Z axis (head tilt left/right)");
+  client.println("      ");
+  client.println("      cube.style.transform = ");
+  client.println("        `rotateY(${smoothYaw}deg) rotateX(${smoothPitch}deg) rotateZ(${smoothRoll}deg)`;");
+  client.println("    }");
+  client.println("    ");
+  client.println("    function smoothValue(axis, value) {");
+  client.println("      // Add new value to history");
+  client.println("      orientationHistory[axis].push(value);");
+  client.println("      ");
+  client.println("      // Keep only last 5 values");
+  client.println("      if (orientationHistory[axis].length > 5) {");
+  client.println("        orientationHistory[axis].shift();");
+  client.println("      }");
+  client.println("      ");
+  client.println("      // Calculate average");
+  client.println("      const sum = orientationHistory[axis].reduce((a, b) => a + b, 0);");
+  client.println("      return sum / orientationHistory[axis].length;");
+  client.println("    }");
+  client.println("    ");
+  client.println("    function updateSystemStatus(data) {");
+  client.println("      // Update zero point status");
+  client.println("      if (data.zeroSet) {");
+  client.println("        document.getElementById('zeroStatus').textContent = 'Set';");
+  client.println("        document.getElementById('zeroStatus').style.color = '#4CAF50';");
+  client.println("      } else {");
+  client.println("        document.getElementById('zeroStatus').textContent = 'Not Set';");
+  client.println("        document.getElementById('zeroStatus').style.color = '#f44336';");
+  client.println("      }");
+  client.println("      ");
+  client.println("      // Update WiFi signal if available");
+  client.println("      if (data.signal) {");
+  client.println("        document.getElementById('wifiSignal').textContent = data.signal + ' dBm';");
+  client.println("        const signalColor = data.signal > -60 ? '#4CAF50' : data.signal > -70 ? '#ff9800' : '#f44336';");
+  client.println("        document.getElementById('wifiSignal').style.color = signalColor;");
+  client.println("      }");
+  client.println("      ");
+  client.println("      // Update device state based on movement");
+  client.println("      const movement = Math.abs(data.relPitch) + Math.abs(data.relRoll) + Math.abs(data.relYaw);");
+  client.println("      document.getElementById('deviceState').textContent = movement > 5 ? 'Active' : 'Idle';");
+  client.println("      document.getElementById('deviceState').style.color = movement > 5 ? '#4CAF50' : '#ff9800';");
+  client.println("    }");
+  client.println("    ");
   client.println("    function sendCommand(command) {");
   client.println("      if (ws && ws.readyState === WebSocket.OPEN) {");
   client.println("        let message = '';");
@@ -696,12 +922,11 @@ void handleRoot() {
   client.println("          case 'ledOff':");
   client.println("          case 'blink':");
   client.println("          case 'restart':");
-  client.println("            message = JSON.stringify({ type: command });");
-  client.println("            break;");
   client.println("          case 'setZero':");
   client.println("          case 'resetZero':");
   client.println("          case 'resetYaw':");
   client.println("          case 'recalibrate':");
+  client.println("          case 'resetAngles':");
   client.println("            message = JSON.stringify({ type: command });");
   client.println("            break;");
   client.println("        }");
@@ -709,217 +934,29 @@ void handleRoot() {
   client.println("          ws.send(message);");
   client.println("        }");
   client.println("      } else {");
-  client.println("        alert('WebSocket не подключен!');");
+  client.println("        showNotification('WebSocket not connected!', 'error');");
   client.println("      }");
   client.println("    }");
-  client.println("");
-  client.println("    function toggleAutoCalibration() {");
-  client.println("      if (ws && ws.readyState === WebSocket.OPEN) {");
-  client.println("        const btn = document.getElementById('autoCalBtn');");
-  client.println("        const currentlyEnabled = btn.textContent.includes('Выключить');");
-  client.println("        ws.send(JSON.stringify({ ");
-  client.println("          type: 'setAutoCalibration', ");
-  client.println("          enable: !currentlyEnabled ");
-  client.println("        }));");
-  client.println("      }");
-  client.println("    }");
-  client.println("");
-  client.println("    // 3D визуализация куба");
-  client.println("    function initCube() {");
-  client.println("      cubeCanvas = document.getElementById('cubeCanvas');");
-  client.println("      ctx = cubeCanvas.getContext('2d');");
+  client.println("    ");
+  client.println("    function showNotification(message, type = 'info') {");
+  client.println("      // Create notification element");
+  client.println("      const notification = document.createElement('div');");
+  client.println("      notification.textContent = message;");
+  client.println("      notification.style.cssText = 'position: fixed;top: 20px;right: 20px; background: ' + (type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : type === 'success' ? '#4CAF50' : '#2196F3') + ';color: white;padding: 15px 20px;border-radius: 5px;z-index: 1001;box-shadow: 0 4px 8px rgba(0,0,0,0.2);font-weight: bold;max-width: 300px;'");
   client.println("      ");
-  client.println("      // Адаптивный размер canvas");
-  client.println("      function resizeCanvas() {");
-  client.println("        const container = document.getElementById('visualization');");
-  client.println("        cubeCanvas.width = container.clientWidth;");
-  client.println("        cubeCanvas.height = container.clientHeight;");
-  client.println("      }");
+  client.println("      document.body.appendChild(notification);");
   client.println("      ");
-  client.println("      window.addEventListener('resize', resizeCanvas);");
-  client.println("      resizeCanvas();");
-  client.println("    }");
-  client.println("");
-  client.println("    function drawCube() {");
-  client.println("      if (!ctx) return;");
-  client.println("      ");
-  client.println("      const width = cubeCanvas.width;");
-  client.println("      const height = cubeCanvas.height;");
-  client.println("      const centerX = width / 2;");
-  client.println("      const centerY = height / 2;");
-  client.println("      const size = Math.min(width, height) * 0.2;");
-  client.println("      ");
-  client.println("      // Очистка canvas");
-  client.println("      ctx.fillStyle = '#2c3e50';");
-  client.println("      ctx.fillRect(0, 0, width, height);");
-  client.println("      ");
-  client.println("      // Используем абсолютные углы вместо относительных");
-  client.println("      // Преобразование углов в радианы (убираем нормализацию)");
-  client.println("      const pitchRad = (sensorData.pitch % 360) * Math.PI / 180;");
-  client.println("      const rollRad = (sensorData.roll % 360) * Math.PI / 180;");
-  client.println("      const yawRad = (sensorData.yaw % 360) * Math.PI / 180;");
-  client.println("      ");
-  client.println("      // Вершины куба");
-  client.println("      const vertices = [");
-  client.println("        { x: -size, y: -size, z: -size },");
-  client.println("        { x: size, y: -size, z: -size },");
-  client.println("        { x: size, y: size, z: -size },");
-  client.println("        { x: -size, y: size, z: -size },");
-  client.println("        { x: -size, y: -size, z: size },");
-  client.println("        { x: size, y: -size, z: size },");
-  client.println("        { x: size, y: size, z: size },");
-  client.println("        { x: -size, y: size, z: size }");
-  client.println("      ];");
-  client.println("      ");
-  client.println("      // Проекция 3D в 2D");
-  client.println("      function project(point) {");
-  client.println("        // Поворот по осям");
-  client.println("        let x = point.x;");
-  client.println("        let y = point.y;");
-  client.println("        let z = point.z;");
-  client.println("        ");
-  client.println("        // Поворот вокруг X (pitch)");
-  client.println("        const cosPitch = Math.cos(pitchRad);");
-  client.println("        const sinPitch = Math.sin(pitchRad);");
-  client.println("        let y1 = y * cosPitch - z * sinPitch;");
-  client.println("        let z1 = y * sinPitch + z * cosPitch;");
-  client.println("        ");
-  client.println("        // Поворот вокруг Y (roll)");
-  client.println("        const cosRoll = Math.cos(rollRad);");
-  client.println("        const sinRoll = Math.sin(rollRad);");
-  client.println("        let x1 = x * cosRoll + z1 * sinRoll;");
-  client.println("        let z2 = -x * sinRoll + z1 * cosRoll;");
-  client.println("        ");
-  client.println("        // Поворот вокруг Z (yaw)");
-  client.println("        const cosYaw = Math.cos(yawRad);");
-  client.println("        const sinYaw = Math.sin(yawRad);");
-  client.println("        let x2 = x1 * cosYaw - y1 * sinYaw;");
-  client.println("        let y2 = x1 * sinYaw + y1 * cosYaw;");
-  client.println("        ");
-  client.println("        // Перспективная проекция");
-  client.println("        const perspective = 500;");
-  client.println("        const scale = perspective / (perspective + z2);");
-  client.println("        ");
-  client.println("        return {");
-  client.println("          x: centerX + x2 * scale,");
-  client.println("          y: centerY + y2 * scale");
-  client.println("        };");
-  client.println("      }");
-  client.println("      ");
-  client.println("      // Проецируем все вершины");
-  client.println("      const projected = vertices.map(project);");
-  client.println("      ");
-  client.println("      // Рисуем грани");
-  client.println("      const faces = [");
-  client.println("        [0, 1, 2, 3], // задняя");
-  client.println("        [4, 5, 6, 7], // передняя");
-  client.println("        [0, 4, 7, 3], // левая");
-  client.println("        [1, 5, 6, 2], // правая");
-  client.println("        [0, 1, 5, 4], // нижняя");
-  client.println("        [3, 2, 6, 7]  // верхняя");
-  client.println("      ];");
-  client.println("      ");
-  client.println("      const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'];");
-  client.println("      ");
-  client.println("      faces.forEach((face, index) => {");
-  client.println("        ctx.fillStyle = colors[index];");
-  client.println("        ctx.strokeStyle = '#34495e';");
-  client.println("        ctx.lineWidth = 2;");
-  client.println("        ");
-  client.println("        ctx.beginPath();");
-  client.println("        ctx.moveTo(projected[face[0]].x, projected[face[0]].y);");
-  client.println("        for (let i = 1; i < face.length; i++) {");
-  client.println("          ctx.lineTo(projected[face[i]].x, projected[face[i]].y);");
+  client.println("      // Remove after 3 seconds");
+  client.println("      setTimeout(() => {");
+  client.println("        if (notification.parentNode) {");
+  client.println("          notification.parentNode.removeChild(notification);");
   client.println("        }");
-  client.println("        ctx.closePath();");
-  client.println("        ctx.fill();");
-  client.println("        ctx.stroke();");
-  client.println("      });");
-  client.println("      ");
-  client.println("      // Рисуем оси");
-  client.println("      drawAxes();");
+  client.println("      }, 3000);");
   client.println("    }");
-  client.println("");
-  client.println("    function drawAxes() {");
-  client.println("      const length = 100;");
-  client.println("      const origin = { x: 0, y: 0, z: 0 };");
-  client.println("      const xAxis = { x: length, y: 0, z: 0 };");
-  client.println("      const yAxis = { x: 0, y: length, z: 0 };");
-  client.println("      const zAxis = { x: 0, y: 0, z: length };");
-  client.println("      ");
-  client.println("      const projOrigin = project(origin);");
-  client.println("      const projX = project(xAxis);");
-  client.println("      const projY = project(yAxis);");
-  client.println("      const projZ = project(zAxis);");
-  client.println("      ");
-  client.println("      // Ось X (красная)");
-  client.println("      ctx.strokeStyle = '#e74c3c';");
-  client.println("      ctx.lineWidth = 3;");
-  client.println("      ctx.beginPath();");
-  client.println("      ctx.moveTo(projOrigin.x, projOrigin.y);");
-  client.println("      ctx.lineTo(projX.x, projX.y);");
-  client.println("      ctx.stroke();");
-  client.println("      ");
-  client.println("      // Ось Y (зеленая)");
-  client.println("      ctx.strokeStyle = '#2ecc71';");
-  client.println("      ctx.beginPath();");
-  client.println("      ctx.moveTo(projOrigin.x, projOrigin.y);");
-  client.println("      ctx.lineTo(projY.x, projY.y);");
-  client.println("      ctx.stroke();");
-  client.println("      ");
-  client.println("      // Ось Z (синяя)");
-  client.println("      ctx.strokeStyle = '#3498db';");
-  client.println("      ctx.beginPath();");
-  client.println("      ctx.moveTo(projOrigin.x, projOrigin.y);");
-  client.println("      ctx.lineTo(projZ.x, projZ.y);");
-  client.println("      ctx.stroke();");
-  client.println("    }");
-  client.println("");
-  client.println("    // Функция проекции для осей (дублирует основную функцию проекции)");
-  client.println("    function project(point) {");
-  client.println("      const pitchRad = sensorData.relPitch * Math.PI / 180;");
-  client.println("      const rollRad = sensorData.relRoll * Math.PI / 180;");
-  client.println("      const yawRad = sensorData.relYaw * Math.PI / 180;");
-  client.println("      ");
-  client.println("      const width = cubeCanvas.width;");
-  client.println("      const height = cubeCanvas.height;");
-  client.println("      const centerX = width / 2;");
-  client.println("      const centerY = height / 2;");
-  client.println("      ");
-  client.println("      let x = point.x;");
-  client.println("      let y = point.y;");
-  client.println("      let z = point.z;");
-  client.println("      ");
-  client.println("      const cosPitch = Math.cos(pitchRad);");
-  client.println("      const sinPitch = Math.sin(pitchRad);");
-  client.println("      let y1 = y * cosPitch - z * sinPitch;");
-  client.println("      let z1 = y * sinPitch + z * cosPitch;");
-  client.println("      ");
-  client.println("      const cosRoll = Math.cos(rollRad);");
-  client.println("      const sinRoll = Math.sin(rollRad);");
-  client.println("      let x1 = x * cosRoll + z1 * sinRoll;");
-  client.println("      let z2 = -x * sinRoll + z1 * cosRoll;");
-  client.println("      ");
-  client.println("      const cosYaw = Math.cos(yawRad);");
-  client.println("      const sinYaw = Math.sin(yawRad);");
-  client.println("      let x2 = x1 * cosYaw - y1 * sinYaw;");
-  client.println("      let y2 = x1 * sinYaw + y1 * cosYaw;");
-  client.println("      ");
-  client.println("      const perspective = 500;");
-  client.println("      const scale = perspective / (perspective + z2);");
-  client.println("      ");
-  client.println("      return {");
-  client.println("        x: centerX + x2 * scale,");
-  client.println("        y: centerY + y2 * scale");
-  client.println("      };");
-  client.println("    }");
-  client.println("");
-  client.println("    // Инициализация при загрузке страницы");
-  client.println("    document.addEventListener('DOMContentLoaded', function() {");
-  client.println("      initCube();");
+  client.println("    ");
+  client.println("    // Initialize when page loads");
+  client.println("    window.addEventListener('load', function() {");
   client.println("      connectWebSocket();");
-  client.println("      // Запуск анимации");
-  client.println("      setInterval(drawCube, 50);");
   client.println("    });");
   client.println("  </script>");
   client.println("</body>");
@@ -1035,6 +1072,9 @@ void setup() {
   // Инициализация последовательного порта
   Serial.begin(115200);
   delay(1000);
+  
+  // Инициализация EEPROM и загрузка нулевой точки
+  loadZeroPoint();
   
   // Настройка встроенного LED
   pinMode(LED_BUILTIN, OUTPUT);
