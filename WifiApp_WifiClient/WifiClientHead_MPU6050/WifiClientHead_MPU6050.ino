@@ -351,8 +351,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           webSocket.sendTXT(num, response);
         }
         else if (command == "blink") {
-          //String response = "{\"type\":\"status\",\"message\":\"LED мигает\"}";
-          //webSocket.sendTXT(num, response);
+          String response = "{\"type\":\"status\",\"message\":\"LED мигает\"}";
+          webSocket.sendTXT(num, response);
           for(int i = 0; i < 10; i++) {
             digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
             delay(500);
