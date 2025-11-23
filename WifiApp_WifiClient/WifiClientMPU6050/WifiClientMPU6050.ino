@@ -810,8 +810,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         Serial.printf("✅ [%u] Подключен от %d.%d.%d.%d\n", num, ip[0], ip[1], ip[2], ip[3]);
         
         // Отправка приветственного сообщения
-        String welcome = "{\"type\":\"status\",\"message\":\"Подключен к MPU6050 трекеру\"}";
-        webSocket.sendTXT(num, welcome);
+        //String welcome = "{\"type\":\"status\",\"message\":\"Подключен к MPU6050 трекеру\"}";
+        //webSocket.sendTXT(num, welcome);
         
         // Отправка статуса калибровки
         String calStatus = "{\"type\":\"calibrationStatus\",\"calibrated\":" + String(calibrated ? "true" : "false") + "}";
@@ -899,13 +899,13 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           webSocket.sendTXT(num, response);
           delay(1000);
           ESP.restart();
+        }
         // В функции webSocketEvent в блоке WStype_TEXT добавить:
         else if (command == "resetAngles") {
           resetAllAngles();
           String response = "{\"type\":\"status\",\"message\":\"Все углы сброшены\"}";
           webSocket.sendTXT(num, response);
         }          
-        }
       }
       break;
   }
