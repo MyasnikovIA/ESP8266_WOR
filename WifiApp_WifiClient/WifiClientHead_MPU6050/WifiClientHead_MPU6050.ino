@@ -11,11 +11,8 @@ Adafruit_MPU6050 mpu;
 const char* ssid = "ESP8266_AP";
 const char* password = "12345678";
 
-
-
 // Новое имя для ESP8266
 String newHostname = "VR_Head_Hom_001";
-
 
 ESP8266WebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
@@ -310,19 +307,19 @@ void handleRoot() {
         .btn-danger { background: #dc3545; color: white; }
         .btn-success { background: #28a745; color: white; }
         .btn-info { background: #17a2b8; color: white; }
-        .zero-controls { background: #e8f5e8; padding: 20px; margin: 20px 0; border-radius: 10px; border-left: 5px solid #28a745; }
+        .zero-controls { background: #e8f5e8; padding: 20px; margin: 20px 0; border-radius: 10px; border-front_: 5px solid #28a745; }
         .visualization { background: #2c3e50; color: white; padding: 25px; border-radius: 15px; margin: 20px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         .cube-container { width: 300px; height: 300px; margin: 20px auto; perspective: 1000px; }
         .cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.1s ease-out; }
         .face { position: absolute; width: 300px; height: 300px; border: 3px solid #34495e; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; background: rgba(52, 152, 219, 0.8); }
-        .front { transform: rotateY(0deg) translateZ(150px); background: rgba(231, 76, 60, 0.8); }
+        .left { transform: rotateY(0deg) translateZ(150px); background: rgba(231, 76, 60, 0.8); }
         .back { transform: rotateY(180deg) translateZ(150px); background: rgba(52, 152, 219, 0.8); }
         .right { transform: rotateY(90deg) translateZ(150px); background: rgba(46, 204, 113, 0.8); }
-        .left { transform: rotateY(-90deg) translateZ(150px); background: rgba(155, 89, 182, 0.8); }
+        .front { transform: rotateY(-90deg) translateZ(150px); background: rgba(155, 89, 182, 0.8); }
         .top { transform: rotateX(90deg) translateZ(150px); background: rgba(241, 196, 15, 0.8); }
         .bottom { transform: rotateX(-90deg) translateZ(150px); background: rgba(230, 126, 34, 0.8); }
         .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
-        .data-item { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff; }
+        .data-item { background: #f8f9fa; padding: 15px; border-radius: 8px; border-front: 4px solid #007bff; }
         .data-label { font-weight: bold; color: #495057; margin-bottom: 5px; }
         h1 { color: #2c3e50; text-align: center; margin-bottom: 30px; }
         h3 { color: #343a40; margin-bottom: 15px; }
@@ -397,8 +394,8 @@ void handleRoot() {
             <div class="cube-container">
                 <div class="cube" id="cube">
                     <div class="face front">FRONT</div>
-                    <div class="face back">BACK</div>
                     <div class="face right">RIGHT</div>
+                    <div class="face back">BACK</div>
                     <div class="face left">LEFT</div>
                     <div class="face top">TOP</div>
                     <div class="face bottom">BOTTOM</div>
