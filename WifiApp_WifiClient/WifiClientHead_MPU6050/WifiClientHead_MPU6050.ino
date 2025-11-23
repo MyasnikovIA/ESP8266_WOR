@@ -197,8 +197,8 @@ void calibrateGyro() {
     Serial.printf("Обработано samples: %d\n", sampleCount);
     
     // Уведомление клиентов
-    String statusMsg = "{\"type\":\"status\",\"message\":\"Калибровка завершена\"}";
-    webSocket.broadcastTXT(statusMsg);
+   // String statusMsg = "{\"type\":\"status\",\"message\":\"Калибровка завершена\"}";
+   // webSocket.broadcastTXT(statusMsg);
   }
 }
 // Функция для принудительного сброса углов
@@ -351,8 +351,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           webSocket.sendTXT(num, response);
         }
         else if (command == "blink") {
-          String response = "{\"type\":\"status\",\"message\":\"LED мигает\"}";
-          webSocket.sendTXT(num, response);
+          //String response = "{\"type\":\"status\",\"message\":\"LED мигает\"}";
+          //webSocket.sendTXT(num, response);
           for(int i = 0; i < 10; i++) {
             digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
             delay(500);
@@ -361,8 +361,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         }
         else if (command == "setZero") {
           setZeroPoint();
-          String response = "{\"type\":\"status\",\"message\":\"Нулевая точка установлена\"}";
-          webSocket.sendTXT(num, response);
+          //String response = "{\"type\":\"status\",\"message\":\"Нулевая точка установлена\"}";
+          //webSocket.sendTXT(num, response);
           String zeroInfo = "{\"type\":\"zeroInfo\",\"zeroPitch\":" + String(zeroPitch, 2) + 
                            ",\"zeroRoll\":" + String(zeroRoll, 2) + 
                            ",\"zeroYaw\":" + String(zeroYaw, 2) + "}";
@@ -370,8 +370,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         }
         else if (command == "resetZero") {
           resetZeroPoint();
-          String response = "{\"type\":\"status\",\"message\":\"Нулевая точка сброшена\"}";
-          webSocket.sendTXT(num, response);
+          //String response = "{\"type\":\"status\",\"message\":\"Нулевая точка сброшена\"}";
+          //webSocket.sendTXT(num, response);
           String zeroReset = "{\"type\":\"zeroReset\"}";
           webSocket.broadcastTXT(zeroReset);
         }
@@ -382,8 +382,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         }
         else if (command == "recalibrate") {
           recalibrate();
-          String response = "{\"type\":\"status\",\"message\":\"Перекалибровка запущена\"}";
-          webSocket.sendTXT(num, response);
+          //String response = "{\"type\":\"status\",\"message\":\"Перекалибровка запущена\"}";
+          //webSocket.sendTXT(num, response);
         }
         else if (command == "setAutoCalibration") {
           bool enable = doc["enable"];
