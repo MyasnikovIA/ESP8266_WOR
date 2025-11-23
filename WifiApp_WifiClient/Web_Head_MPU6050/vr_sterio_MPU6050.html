@@ -144,6 +144,11 @@
             font-weight: bold;
         }
         
+        .sensor-value-warning {
+            color: #FF9800;
+            font-weight: bold;
+        }
+        
         .control-btn {
             background: #2196F3;
             color: white;
@@ -157,6 +162,22 @@
         
         .control-btn:hover {
             background: #1976D2;
+        }
+        
+        .control-btn-warning {
+            background: #FF9800;
+        }
+        
+        .control-btn-warning:hover {
+            background: #F57C00;
+        }
+        
+        .control-btn-success {
+            background: #4CAF50;
+        }
+        
+        .control-btn-success:hover {
+            background: #388E3C;
         }
         
         .sensor-controls {
@@ -229,8 +250,13 @@
                     </div>
                     <div class="sensor-data">
                         <div>Относительный Yaw: <span class="sensor-value" id="relativeYawValue">0°</span></div>
-                        <div>Начальный Yaw: <span class="sensor-value" id="initialYawValue">0°</span></div>
+                        <div>Накопленный Yaw: <span class="sensor-value" id="accumulatedYawValue">0°</span></div>
                     </div>
+                    <div class="sensor-data">
+                        <div>Нулевая точка: <span class="sensor-value-warning" id="zeroPointStatus">Не установлена</span></div>
+                    </div>
+                    <button class="control-btn control-btn-success" onclick="sendCommand('SET_ZERO')">Установить нулевую точку</button>
+                    <button class="control-btn control-btn-warning" onclick="sendCommand('RESET_ZERO')">Сбросить нулевую точку</button>
                     <button class="control-btn" onclick="resetInitialPosition()">Сбросить начальную позицию</button>
                     <button class="control-btn" onclick="reconnectSensor()">Переподключиться</button>
                 </div>
@@ -278,6 +304,13 @@
             pitch: 0,
             roll: 0,
             yaw: 0,
+            relPitch: 0,
+            relRoll: 0,
+            relYaw: 0,
+            accPitch: 0,
+            accRoll: 0,
+            accYaw: 0,
+            zeroSet: false,
             lastUpdate: 0
         };
 
@@ -322,7 +355,7 @@
         }
 
         // Обновление относительного положения
-        function updateRelativeOrientation(rawPitch, rawRoll, rawYaw) {
+        function updateRelativeOrientation(rawPitch, rawRoll, rawYaw, relYaw, accYaw, zeroSet) {
             if (!relativeOrientation.isInitialized) {
                 // Первая инициализация - запоминаем начальные значения
                 relativeOrientation.initialYaw = rawYaw;
@@ -347,7 +380,18 @@
             safeUpdateElement('pitchValue', relativeOrientation.pitch.toFixed(1) + '°');
             safeUpdateElement('rollValue', relativeOrientation.roll.toFixed(1) + '°');
             safeUpdateElement('yawValue', rawYaw.toFixed(1) + '°');
-            safeUpdateElement('relativeYawValue', relativeOrientation.relativeYaw.toFixed(1) + '°');
+            safeUpdateElement('relativeYawValue', relYaw.toFixed(1) + '°');
+            safeUpdateElement('accumulatedYawValue', accYaw.toFixed(1) + '°');
+            
+            // Обновляем статус нулевой точки
+            const zeroStatusElement = document.getElementById('zeroPointStatus');
+            if (zeroSet) {
+                zeroStatusElement.textContent = 'Установлена';
+                zeroStatusElement.className = 'sensor-value';
+            } else {
+                zeroStatusElement.textContent = 'Не установлена';
+                zeroStatusElement.className = 'sensor-value-warning';
+            }
         }
 
         // Сброс начальной позиции
@@ -369,6 +413,16 @@
                 ws.close();
             }
             setTimeout(connectSensor, 500);
+        }
+
+        // Отправка команды на устройство
+        function sendCommand(command) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(command);
+                console.log('Отправлена команда:', command);
+            } else {
+                console.log('WebSocket не подключен, команда не отправлена:', command);
+            }
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -604,7 +658,7 @@
         
         // Функции управления датчиком MPU6050
         function connectSensor() {
-            const userIp = prompt('Введите IP адрес ESP8266 с MPU6050:', '192.168.31.110');
+            const userIp = prompt('Введите IP адрес ESP8266 с MPU6050:', '192.168.5.103');
             if (!userIp) return;
             
             const wsUrl = `ws://${userIp}:81`;
@@ -618,6 +672,10 @@
                 ws.onopen = function() {
                     isConnected = true;
                     safeUpdateElement('connectionStatus', 'Подключен');
+                    
+                    // Показываем элементы управления
+                    document.querySelector('.sensor-controls').style.display = 'flex';
+                    document.querySelector('.fragment-right .sensor-data').style.display = 'block';
                     
                     // Сбрасываем инициализацию при новом подключении
                     relativeOrientation.isInitialized = false;
@@ -637,10 +695,10 @@
                 
                 ws.onmessage = function(event) {
                     try {
-                        const data = JSON.parse(event.data);
+                        const data = event.data;
                         handleSensorMessage(data);
                     } catch (e) {
-                        console.error('Ошибка парсинга:', e);
+                        console.error('Ошибка обработки сообщения:', e);
                     }
                 };
                 
@@ -651,23 +709,70 @@
         }
         
         function handleSensorMessage(data) {
-            switch(data.type) {
-                case 'sensorData':
-                    updateSensorData(data);
-                    break;
+            // Парсим данные в формате "PITCH:0.0,ROLL:0.0,YAW:0.0,REL_PITCH:0.00,REL_ROLL:0.00,REL_YAW:0.00,ACC_PITCH:0.00,ACC_ROLL:0.00,ACC_YAW:0.00,ZERO_SET:false"
+            if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
+                // Извлекаем значения из строки
+                const pitchMatch = data.match(/PITCH:([-\d.]+)/);
+                const rollMatch = data.match(/ROLL:([-\d.]+)/);
+                const yawMatch = data.match(/YAW:([-\d.]+)/);
+                const relPitchMatch = data.match(/REL_PITCH:([-\d.]+)/);
+                const relRollMatch = data.match(/REL_ROLL:([-\d.]+)/);
+                const relYawMatch = data.match(/REL_YAW:([-\d.]+)/);
+                const accPitchMatch = data.match(/ACC_PITCH:([-\d.]+)/);
+                const accRollMatch = data.match(/ACC_ROLL:([-\d.]+)/);
+                const accYawMatch = data.match(/ACC_YAW:([-\d.]+)/);
+                const zeroSetMatch = data.match(/ZERO_SET:(true|false)/);
+                
+                if (pitchMatch && rollMatch && yawMatch) {
+                    const pitch = parseFloat(pitchMatch[1]);
+                    const roll = parseFloat(rollMatch[1]);
+                    const yaw = parseFloat(yawMatch[1]);
+                    const relPitch = relPitchMatch ? parseFloat(relPitchMatch[1]) : 0;
+                    const relRoll = relRollMatch ? parseFloat(relRollMatch[1]) : 0;
+                    const relYaw = relYawMatch ? parseFloat(relYawMatch[1]) : 0;
+                    const accPitch = accPitchMatch ? parseFloat(accPitchMatch[1]) : 0;
+                    const accRoll = accRollMatch ? parseFloat(accRollMatch[1]) : 0;
+                    const accYaw = accYawMatch ? parseFloat(accYawMatch[1]) : 0;
+                    const zeroSet = zeroSetMatch ? (zeroSetMatch[1] === 'true') : false;
+                    
+                    updateSensorData(pitch, roll, yaw, relPitch, relRoll, relYaw, accPitch, accRoll, accYaw, zeroSet);
+                }
+            }
+            
+            // Обработка специальных сообщений
+            if (data === 'ZERO_POINT_SET') {
+                console.log('Нулевая точка установлена');
+                sensorData.zeroSet = true;
+                safeUpdateElement('zeroPointStatus', 'Установлена');
+                document.getElementById('zeroPointStatus').className = 'sensor-value';
+            }
+            
+            if (data === 'ZERO_POINT_RESET') {
+                console.log('Нулевая точка сброшена');
+                sensorData.zeroSet = false;
+                safeUpdateElement('zeroPointStatus', 'Не установлена');
+                document.getElementById('zeroPointStatus').className = 'sensor-value-warning';
             }
         }
         
-        function updateSensorData(data) {
+        function updateSensorData(pitch, roll, yaw, relPitch, relRoll, relYaw, accPitch, accRoll, accYaw, zeroSet) {
             sensorData = {
-                pitch: data.pitch || 0,
-                roll: data.roll || 0,
-                yaw: data.yaw || 0,
+                pitch: pitch || 0,
+                roll: roll || 0,
+                yaw: yaw || 0,
+                relPitch: relPitch || 0,
+                relRoll: relRoll || 0,
+                relYaw: relYaw || 0,
+                accPitch: accPitch || 0,
+                accRoll: accRoll || 0,
+                accYaw: accYaw || 0,
+                zeroSet: zeroSet || false,
                 lastUpdate: Date.now()
             };
             
             // Обновляем относительное положение
-            updateRelativeOrientation(sensorData.pitch, sensorData.roll, sensorData.yaw);
+            updateRelativeOrientation(sensorData.pitch, sensorData.roll, sensorData.yaw, 
+                                    sensorData.relYaw, sensorData.accYaw, sensorData.zeroSet);
         }
         
         function updateFPS() {
