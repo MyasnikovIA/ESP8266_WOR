@@ -313,8 +313,8 @@ void handleRoot() {
         .cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.1s ease-out; }
         .face { position: absolute; width: 300px; height: 300px; border: 3px solid #34495e; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; background: rgba(52, 152, 219, 0.8); }
         .left { transform: rotateY(0deg) translateZ(150px); background: rgba(231, 76, 60, 0.8); }
-        .back { transform: rotateY(180deg) translateZ(150px); background: rgba(52, 152, 219, 0.8); }
-        .right { transform: rotateY(90deg) translateZ(150px); background: rgba(46, 204, 113, 0.8); }
+        .right { transform: rotateY(180deg) translateZ(150px); background: rgba(52, 152, 219, 0.8); }
+        .back { transform: rotateY(90deg) translateZ(150px); background: rgba(46, 204, 113, 0.8); }
         .front { transform: rotateY(-90deg) translateZ(150px); background: rgba(155, 89, 182, 0.8); }
         .top { transform: rotateX(90deg) translateZ(150px); background: rgba(241, 196, 15, 0.8); }
         .bottom { transform: rotateX(-90deg) translateZ(150px); background: rgba(230, 126, 34, 0.8); }
@@ -394,9 +394,9 @@ void handleRoot() {
             <div class="cube-container">
                 <div class="cube" id="cube">
                     <div class="face front">FRONT</div>
-                    <div class="face right">RIGHT</div>
                     <div class="face back">BACK</div>
                     <div class="face left">LEFT</div>
+                    <div class="face right">RIGHT</div>
                     <div class="face top">TOP</div>
                     <div class="face bottom">BOTTOM</div>
                 </div>
