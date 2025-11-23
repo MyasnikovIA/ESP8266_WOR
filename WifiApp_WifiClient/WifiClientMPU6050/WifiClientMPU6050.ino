@@ -1,3 +1,4 @@
+
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
@@ -899,9 +900,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           webSocket.sendTXT(num, response);
           delay(1000);
           ESP.restart();
-        }
         // В функции webSocketEvent в блоке WStype_TEXT добавить:
-        else if (command == "resetAngles") {
+        } else if (command == "resetAngles") {
           resetAllAngles();
           String response = "{\"type\":\"status\",\"message\":\"Все углы сброшены\"}";
           webSocket.sendTXT(num, response);
