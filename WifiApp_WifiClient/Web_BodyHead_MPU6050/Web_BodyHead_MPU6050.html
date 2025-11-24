@@ -42,7 +42,7 @@
 
         .content {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -168,6 +168,7 @@
             justify-content: center;
             gap: 20px;
             margin-top: 15px;
+            flex-wrap: wrap;
         }
 
         .legend-item {
@@ -188,6 +189,10 @@
 
         .body-color {
             background: #2196F3;
+        }
+
+        .left-arm-color {
+            background: #9C27B0;
         }
 
         .notification {
@@ -248,14 +253,18 @@
             font-size: 0.8rem;
         }
 
-        .rotation-point {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background: #ff0000;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 1000;
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+
+        .data-label {
+            font-weight: bold;
+        }
+
+        .data-value {
+            font-family: monospace;
         }
     </style>
 </head>
@@ -288,12 +297,20 @@
                     </div>
                 </div>
                 <div class="debug-info">
-                    Локальные углы головы: <span id="headLocalAngles">0, 0, 0</span>
+                    <div class="data-row">
+                        <span class="data-label">Абсолютные углы:</span>
+                        <span class="data-value" id="headAbsoluteAngles">0°, 0°, 0°</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Относительные углы:</span>
+                        <span class="data-value" id="headRelativeAngles">0°, 0°, 0°</span>
+                    </div>
                 </div>
                 <div class="controls">
                     <button onclick="connectHead()">Подключить голову</button>
-                    <button class="btn-success" onclick="sendHeadCommand('SET_ZERO')">Установить ноль</button>
-                    <button class="btn-warning" onclick="sendHeadCommand('RECALIBRATE')">Калибровать</button>
+                    <button class="btn-success" onclick="sendHeadCommand('setZero')">Установить ноль</button>
+                    <button class="btn-warning" onclick="sendHeadCommand('recalibrate')">Калибровать</button>
+                    <button class="btn-info" onclick="sendHeadCommand('resetAngles')">Сбросить углы</button>
                 </div>
             </div>
 
@@ -318,13 +335,62 @@
                     </div>
                 </div>
                 <div class="debug-info">
-                    Локальные углы тела: <span id="bodyLocalAngles">0, 0, 0</span><br>
-                    Направление тела: <span id="bodyDirection">0°</span>
+                    <div class="data-row">
+                        <span class="data-label">Абсолютные углы:</span>
+                        <span class="data-value" id="bodyAbsoluteAngles">0°, 0°, 0°</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Относительные углы:</span>
+                        <span class="data-value" id="bodyRelativeAngles">0°, 0°, 0°</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Направление тела:</span>
+                        <span class="data-value" id="bodyDirection">0°</span>
+                    </div>
                 </div>
                 <div class="controls">
                     <button onclick="connectBody()">Подключить тело</button>
-                    <button class="btn-success" onclick="sendBodyCommand('SET_ZERO')">Установить ноль</button>
-                    <button class="btn-warning" onclick="sendBodyCommand('RECALIBRATE')">Калибровать</button>
+                    <button class="btn-success" onclick="sendBodyCommand('setZero')">Установить ноль</button>
+                    <button class="btn-warning" onclick="sendBodyCommand('recalibrate')">Калибровать</button>
+                    <button class="btn-info" onclick="sendBodyCommand('resetAngles')">Сбросить углы</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Датчик на левой руке</h2>
+                <div class="status-container">
+                    <div class="status-item">
+                        <div>Статус</div>
+                        <div class="status-value" id="leftArmStatus">Отключен</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Pitch</div>
+                        <div class="status-value" id="leftArmPitch">0°</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Roll</div>
+                        <div class="status-value" id="leftArmRoll">0°</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Yaw</div>
+                        <div class="status-value" id="leftArmYaw">0°</div>
+                    </div>
+                </div>
+                <div class="debug-info">
+                    <div class="data-row">
+                        <span class="data-label">Абсолютные углы:</span>
+                        <span class="data-value" id="leftArmAbsoluteAngles">0°, 0°, 0°</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Относительные углы:</span>
+                        <span class="data-value" id="leftArmRelativeAngles">0°, 0°, 0°</span>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button onclick="connectLeftArm()">Подключить руку</button>
+                    <button class="btn-success" onclick="sendLeftArmCommand('setZero')">Установить ноль</button>
+                    <button class="btn-warning" onclick="sendLeftArmCommand('recalibrate')">Калибровать</button>
+                    <button class="btn-info" onclick="sendLeftArmCommand('resetAngles')">Сбросить углы</button>
                 </div>
             </div>
         </div>
@@ -341,6 +407,7 @@
                 <button class="btn-info" onclick="toggleAutoRotate()" id="autoRotateBtn">Автовращение: Выкл</button>
                 <button class="btn-info" onclick="focusOnHead()">Фокус на голову</button>
                 <button class="btn-info" onclick="focusOnBody()">Фокус на тело</button>
+                <button class="btn-info" onclick="focusOnLeftArm()">Фокус на левую руку</button>
             </div>
             <div class="legend">
                 <div class="legend-item">
@@ -351,9 +418,14 @@
                     <div class="legend-color body-color"></div>
                     <div>Тело (вращение от основания)</div>
                 </div>
+                <div class="legend-item">
+                    <div class="legend-color left-arm-color"></div>
+                    <div>Левая рука (прикреплена к телу)</div>
+                </div>
             </div>
             <div class="info-panel">
                 <p><strong>Вращение от основания:</strong> Тело вращается вокруг точки в основании (ноги), а не вокруг центра</p>
+                <p><strong>Прикрепление элементов:</strong> Голова и левая рука прикреплены к телу и вращаются вместе с ним</p>
                 <p><strong>Управление камерой:</strong> 
                     <span class="help-text">ЛКМ + движение - вращение вокруг модели | Колесико - приближение/отдаление</span>
                 </p>
@@ -364,565 +436,662 @@
     <div class="notification" id="notification"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+	<script>
+// Конфигурация
+const config = {
+    headSensorUrl: "http://192.168.5.103",
+    bodySensorUrl: "http://192.168.5.104",
+    leftArmSensorUrl: "http://192.168.5.105",
+    headWebSocket: null,
+    bodyWebSocket: null,
+    leftArmWebSocket: null,
+    headConnected: false,
+    bodyConnected: false,
+    leftArmConnected: false,
+    headData: { 
+        pitch: 0, roll: 0, yaw: 0,
+        relPitch: 0, relRoll: 0, relYaw: 0,
+        calibrated: false, zeroSet: false
+    },
+    bodyData: { 
+        pitch: 0, roll: 0, yaw: 0,
+        relPitch: 0, relRoll: 0, relYaw: 0,
+        calibrated: false, zeroSet: false
+    },
+    leftArmData: { 
+        pitch: 0, roll: 0, yaw: 0,
+        relPitch: 0, relRoll: 0, relYaw: 0,
+        calibrated: false, zeroSet: false
+    }
+};
+
+// Three.js сцена и управление камерой
+let scene, camera, renderer;
+let headCube, bodyCube, leftArmCube, playerGroup, headContainer, bodyContainer, leftArmContainer;
+let cameraControls = {
+    isMouseDown: false,
+    lastMouseX: 0,
+    lastMouseY: 0,
+    cameraDistance: 12,
+    cameraAngleX: 0,
+    cameraAngleY: 0,
+    autoRotate: false,
+    autoRotateSpeed: 0.5
+};
+
+// Класс для управления ориентацией с локальными поворотами
+class OrientationController {
+    constructor() {
+        this.quaternion = new THREE.Quaternion();
+        this.euler = new THREE.Euler();
+    }
+
+    // Установка глобальной ориентации (yaw)
+    setGlobalOrientation(yaw) {
+        this.euler.set(0, THREE.MathUtils.degToRad(yaw), 0, 'YXZ');
+        this.quaternion.setFromEuler(this.euler);
+    }
+
+    // Применение локальных наклонов (pitch, roll)
+    applyLocalTilt(pitch, roll) {
+        // Создаем кватернион для локальных наклонов
+        const tiltQuaternion = new THREE.Quaternion();
+        const tiltEuler = new THREE.Euler(
+            THREE.MathUtils.degToRad(pitch),
+            0,
+            THREE.MathUtils.degToRad(roll),
+            'YXZ'
+        );
+        tiltQuaternion.setFromEuler(tiltEuler);
+
+        // Комбинируем с глобальной ориентацией
+        this.quaternion.multiply(tiltQuaternion);
+    }
+
+    // Получение результирующего кватерниона
+    getQuaternion() {
+        return this.quaternion;
+    }
+
+    // Сброс ориентации
+    reset() {
+        this.quaternion.identity();
+    }
+}
+
+// Контроллеры для головы, тела и левой руки
+const bodyController = new OrientationController();
+const headController = new OrientationController();
+const leftArmController = new OrientationController();
+
+// Создание текста для куба
+function createTextSprite(message, color = 0xffffff) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 256;
     
-    <script>
-        // Конфигурация
-        const config = {
-            headSensorUrl: "http://192.168.5.103",
-            bodySensorUrl: "http://192.168.5.104",
-            headWebSocket: null,
-            bodyWebSocket: null,
-            headConnected: false,
-            bodyConnected: false,
-            headData: { pitch: 0, roll: 0, yaw: 0 },
-            bodyData: { pitch: 0, roll: 0, yaw: 0 }
-        };
+    context.fillStyle = 'rgba(0, 0, 0, 0)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    context.font = 'Bold 40px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillStyle = `rgb(${color === 0xffffff ? '255,255,255' : '0,0,0'})`;
+    context.fillText(message, canvas.width / 2, canvas.height / 2);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(1, 1, 1);
+    
+    return sprite;
+}
 
-        // Three.js сцена и управление камерой
-        let scene, camera, renderer;
-        let headCube, bodyCube, playerGroup, headContainer, bodyContainer;
-        let cameraControls = {
-            isMouseDown: false,
-            lastMouseX: 0,
-            lastMouseY: 0,
-            cameraDistance: 12,
-            cameraAngleX: 0,
-            cameraAngleY: 0,
-            autoRotate: false,
-            autoRotateSpeed: 0.5
-        };
+// Добавление надписей на куб
+function addLabelsToCube(cube, cubeType) {
+    const labels = [];
+    const size = cubeType === 'head' ? 0.6 : (cubeType === 'leftArm' ? 0.4 : 0.8);
+    
+    // Передняя грань
+    const frontText = createTextSprite('ПЕРЕД', 0xFFFFFF);
+    frontText.position.set(0, 0, size);
+    cube.add(frontText);
+    labels.push(frontText);
+    
+    // Задняя грань
+    const backText = createTextSprite('ЗАД', 0xFFFFFF);
+    backText.position.set(0, 0, -size);
+    backText.rotation.y = Math.PI;
+    cube.add(backText);
+    labels.push(backText);
+    
+    // Левая грань
+    const leftText = createTextSprite('ЛЕВО', 0xFFFFFF);
+    leftText.position.set(-size, 0, 0);
+    leftText.rotation.y = Math.PI / 2;
+    cube.add(leftText);
+    labels.push(leftText);
+    
+    // Правая грань
+    const rightText = createTextSprite('ПРАВО', 0xFFFFFF);
+    rightText.position.set(size, 0, 0);
+    rightText.rotation.y = -Math.PI / 2;
+    cube.add(rightText);
+    labels.push(rightText);
+    
+    // Верхняя грань (только для головы и руки)
+    if (cubeType === 'head' || cubeType === 'leftArm') {
+        const topText = createTextSprite('ВЕРХ', 0xFFFFFF);
+        topText.position.set(0, size, 0);
+        topText.rotation.x = -Math.PI / 2;
+        cube.add(topText);
+        labels.push(topText);
+    }
+    
+    // Нижняя грань (только для тела)
+    if (cubeType === 'body') {
+        const bottomText = createTextSprite('НИЗ', 0xFFFFFF);
+        bottomText.position.set(0, -size, 0);
+        bottomText.rotation.x = Math.PI / 2;
+        cube.add(bottomText);
+        labels.push(bottomText);
+    }
+    
+    return labels;
+}
 
-        // Класс для управления ориентацией с локальными поворотами
-        class OrientationController {
-            constructor() {
-                this.quaternion = new THREE.Quaternion();
-                this.euler = new THREE.Euler();
-            }
+// Обновление позиции камеры
+function updateCameraPosition() {
+    const phi = THREE.MathUtils.degToRad(cameraControls.cameraAngleX);
+    const theta = THREE.MathUtils.degToRad(cameraControls.cameraAngleY);
+    
+    const x = cameraControls.cameraDistance * Math.sin(phi) * Math.cos(theta);
+    const y = cameraControls.cameraDistance * Math.sin(theta) + 1.5;
+    const z = cameraControls.cameraDistance * Math.cos(phi) * Math.cos(theta);
+    
+    camera.position.set(x, y, z);
+    camera.lookAt(0, 1.5, 0);
+}
 
-            // Установка глобальной ориентации (yaw)
-            setGlobalOrientation(yaw) {
-                this.euler.set(0, THREE.MathUtils.degToRad(yaw), 0, 'YXZ');
-                this.quaternion.setFromEuler(this.euler);
-            }
-
-            // Применение локальных наклонов (pitch, roll)
-            applyLocalTilt(pitch, roll) {
-                // Создаем кватернион для локальных наклонов
-                const tiltQuaternion = new THREE.Quaternion();
-                const tiltEuler = new THREE.Euler(
-                    THREE.MathUtils.degToRad(pitch),
-                    0,
-                    THREE.MathUtils.degToRad(roll),
-                    'YXZ'
-                );
-                tiltQuaternion.setFromEuler(tiltEuler);
-
-                // Комбинируем с глобальной ориентацией
-                this.quaternion.multiply(tiltQuaternion);
-            }
-
-            // Получение результирующего кватерниона
-            getQuaternion() {
-                return this.quaternion;
-            }
-
-            // Сброс ориентации
-            reset() {
-                this.quaternion.identity();
-            }
+// Обработчики событий мыши
+function initMouseControls() {
+    const container = document.getElementById('visualizationContainer');
+    
+    container.addEventListener('mousedown', function(event) {
+        if (event.button === 0) {
+            cameraControls.isMouseDown = true;
+            cameraControls.lastMouseX = event.clientX;
+            cameraControls.lastMouseY = event.clientY;
+            container.style.cursor = 'grabbing';
         }
-
-        // Контроллеры для головы и тела
-        const bodyController = new OrientationController();
-        const headController = new OrientationController();
+    });
+    
+    container.addEventListener('mouseup', function(event) {
+        if (event.button === 0) {
+            cameraControls.isMouseDown = false;
+            container.style.cursor = 'grab';
+        }
+    });
+    
+    container.addEventListener('mouseleave', function() {
+        cameraControls.isMouseDown = false;
+        container.style.cursor = 'grab';
+    });
+    
+    container.addEventListener('mousemove', function(event) {
+        if (!cameraControls.isMouseDown) return;
         
-        // Создание текста для куба
-        function createTextSprite(message, color = 0xffffff) {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 256;
-            canvas.height = 256;
-            
-            context.fillStyle = 'rgba(0, 0, 0, 0)';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            
-            context.font = 'Bold 40px Arial';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.fillStyle = `rgb(${color === 0xffffff ? '255,255,255' : '0,0,0'})`;
-            context.fillText(message, canvas.width / 2, canvas.height / 2);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            const material = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(material);
-            sprite.scale.set(1, 1, 1);
-            
-            return sprite;
-        }
+        const deltaX = event.clientX - cameraControls.lastMouseX;
+        const deltaY = event.clientY - cameraControls.lastMouseY;
+        
+        cameraControls.cameraAngleX += deltaX * 0.5;
+        cameraControls.cameraAngleY += deltaY * 0.5;
+        
+        cameraControls.cameraAngleY = Math.max(-85, Math.min(85, cameraControls.cameraAngleY));
+        
+        cameraControls.lastMouseX = event.clientX;
+        cameraControls.lastMouseY = event.clientY;
+        
+        updateCameraPosition();
+    });
+    
+    container.addEventListener('wheel', function(event) {
+        event.preventDefault();
+        
+        const zoomSpeed = 0.1;
+        cameraControls.cameraDistance += event.deltaY * zoomSpeed;
+        cameraControls.cameraDistance = Math.max(3, Math.min(50, cameraControls.cameraDistance));
+        
+        updateCameraPosition();
+    });
+}
 
-        // Добавление надписей на куб
-        function addLabelsToCube(cube, cubeType) {
-            const labels = [];
-            const size = cubeType === 'head' ? 0.6 : 0.8;
+// Сброс камеры
+function resetCamera() {
+    cameraControls.cameraDistance = 12;
+    cameraControls.cameraAngleX = 0;
+    cameraControls.cameraAngleY = 30;
+    updateCameraPosition();
+    showNotification("Камера сброшена", "info");
+}
+
+// Переключение автовращения
+function toggleAutoRotate() {
+    cameraControls.autoRotate = !cameraControls.autoRotate;
+    document.getElementById('autoRotateBtn').textContent = 
+        `Автовращение: ${cameraControls.autoRotate ? 'Вкл' : 'Выкл'}`;
+    showNotification(`Автовращение ${cameraControls.autoRotate ? 'включено' : 'выключено'}`, "info");
+}
+
+// Фокус на голову
+function focusOnHead() {
+    cameraControls.cameraDistance = 6;
+    cameraControls.cameraAngleX = 0;
+    cameraControls.cameraAngleY = 20;
+    updateCameraPosition();
+    showNotification("Фокус на голову", "info");
+}
+
+// Фокус на тело
+function focusOnBody() {
+    cameraControls.cameraDistance = 8;
+    cameraControls.cameraAngleX = 0;
+    cameraControls.cameraAngleY = 10;
+    updateCameraPosition();
+    showNotification("Фокус на тело", "info");
+}
+
+// Фокус на левую руку
+function focusOnLeftArm() {
+    cameraControls.cameraDistance = 6;
+    cameraControls.cameraAngleX = -30;
+    cameraControls.cameraAngleY = 15;
+    updateCameraPosition();
+    showNotification("Фокус на левую руку", "info");
+}
+
+// Инициализация 3D сцены
+function initScene() {
+    // Создание сцены
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+    
+    // Создание камеры
+    camera = new THREE.PerspectiveCamera(75, 
+        document.getElementById('scene').clientWidth / document.getElementById('scene').clientHeight, 
+        0.1, 1000);
+    
+    cameraControls.cameraAngleY = 30;
+    updateCameraPosition();
+    
+    // Создание рендерера
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(document.getElementById('scene').clientWidth, 
+                    document.getElementById('scene').clientHeight);
+    document.getElementById('scene').appendChild(renderer.domElement);
+    
+    // Освещение
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 10, 5);
+    scene.add(directionalLight);
+    
+    // Создание сетки пола
+    const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+    scene.add(gridHelper);
+    
+    // Группа для всего игрока - точка вращения в основании
+    playerGroup = new THREE.Group();
+    playerGroup.position.y = 0;
+    scene.add(playerGroup);
+    
+    // Контейнер для тела - смещен вверх от точки вращения
+    bodyContainer = new THREE.Group();
+    bodyContainer.position.y = 1.5;
+    playerGroup.add(bodyContainer);
+    
+    // Создание тела (параллелепипед)
+    const bodyGeometry = new THREE.BoxGeometry(1.5, 3, 0.8);
+    const bodyMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x2196F3,
+        transparent: true,
+        opacity: 0.8,
+        wireframe: false
+    });
+    bodyCube = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    bodyContainer.add(bodyCube);
+    addLabelsToCube(bodyCube, 'body');
+    
+    // Контейнер для головы (прикреплен к телу)
+    headContainer = new THREE.Group();
+    headContainer.position.y = 2.5;
+    bodyCube.add(headContainer);
+    
+    // Создание головы (куб)
+    const headGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const headMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0xFF5722,
+        transparent: true,
+        opacity: 0.8,
+        wireframe: false
+    });
+    headCube = new THREE.Mesh(headGeometry, headMaterial);
+    headContainer.add(headCube);
+    addLabelsToCube(headCube, 'head');
+    
+    // Шея (соединительный цилиндр)
+    const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
+    const neckMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
+    const neck = new THREE.Mesh(neckGeometry, neckMaterial);
+    neck.position.y = -0.25;
+    headContainer.add(neck);
+    
+    // КОНТЕЙНЕР ДЛЯ ЛЕВОЙ РУКИ - ТОЧКА ВРАЩЕНИЯ В ПЛЕЧЕВОМ СУСТАВЕ
+    leftArmContainer = new THREE.Group();
+    leftArmContainer.position.set(-1.2, 1.5, 0); // Позиция плечевого сустава относительно тела
+    bodyCube.add(leftArmContainer);
+    
+    // Создание левой плечевой кости (цилиндр)
+    const leftArmGeometry = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 8);
+    const leftArmMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x9C27B0,
+        transparent: true,
+        opacity: 0.8,
+        wireframe: false
+    });
+    leftArmCube = new THREE.Mesh(leftArmGeometry, leftArmMaterial);
+    leftArmCube.rotation.z = Math.PI / 2; // Поворачиваем цилиндр горизонтально
+    
+    // ВАЖНО: Смещаем кость так, чтобы она вращалась вокруг плечевого сустава
+    // Длина кости 1.5, поэтому смещаем на половину длины (0.75) от точки крепления
+    leftArmCube.position.x = 0.75; // Смещение вдоль оси X (от сустава)
+    
+    leftArmContainer.add(leftArmCube);
+    addLabelsToCube(leftArmCube, 'leftArm');
+    
+    // Плечевой сустав (сфера) - точка вращения
+    const shoulderGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+    const shoulderMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF });
+    const shoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
+    // Сустав находится в начале координат контейнера leftArmContainer
+    leftArmContainer.add(shoulder);
+    
+    // Визуализация точки вращения (красная точка в основании)
+    const rotationPointGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const rotationPointMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const rotationPoint = new THREE.Mesh(rotationPointGeometry, rotationPointMaterial);
+    rotationPoint.position.y = 0;
+    playerGroup.add(rotationPoint);
+    
+    // Оси координат для отладки
+    const axesHelper = new THREE.AxesHelper(2);
+    playerGroup.add(axesHelper);
+    
+    // Инициализация управления мышью
+    initMouseControls();
+    
+    // Анимация
+    animate();
+    
+    // Обработка изменения размера окна
+    window.addEventListener('resize', onWindowResize);
+}
+
+function onWindowResize() {
+    const container = document.getElementById('scene');
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    if (cameraControls.autoRotate) {
+        cameraControls.cameraAngleX += cameraControls.autoRotateSpeed;
+        updateCameraPosition();
+    }
+    
+    updatePlayerPosition();
+    renderer.render(scene, camera);
+}
+
+function updatePlayerPosition() {
+    // Вращение происходит вокруг основания тела (playerGroup)
+    
+    // ТЕЛО: Глобальная ориентация + локальные наклоны
+    bodyController.setGlobalOrientation(config.bodyData.yaw);
+    bodyController.applyLocalTilt(config.bodyData.pitch, config.bodyData.roll);
+    playerGroup.setRotationFromQuaternion(bodyController.getQuaternion());
+    
+    // ГОЛОВА: Локальные повороты относительно тела
+    headController.setGlobalOrientation(config.headData.yaw);
+    headController.applyLocalTilt(config.headData.pitch, config.headData.roll);
+    headCube.setRotationFromQuaternion(headController.getQuaternion());
+    
+    // ЛЕВАЯ РУКА: Локальные повороты относительно тела
+    // Вращение происходит вокруг плечевого сустава (leftArmContainer)
+    leftArmController.setGlobalOrientation(config.leftArmData.yaw);
+    leftArmController.applyLocalTilt(config.leftArmData.pitch, config.leftArmData.roll);
+    leftArmContainer.setRotationFromQuaternion(leftArmController.getQuaternion());
+    
+    // Обновление отладочной информации
+    updateDebugInfo();
+}
+
+function updateDebugInfo() {
+    // Обновление основных показателей
+    document.getElementById('headPitch').textContent = config.headData.pitch.toFixed(1) + '°';
+    document.getElementById('headRoll').textContent = config.headData.roll.toFixed(1) + '°';
+    document.getElementById('headYaw').textContent = config.headData.yaw.toFixed(1) + '°';
+    
+    document.getElementById('bodyPitch').textContent = config.bodyData.pitch.toFixed(1) + '°';
+    document.getElementById('bodyRoll').textContent = config.bodyData.roll.toFixed(1) + '°';
+    document.getElementById('bodyYaw').textContent = config.bodyData.yaw.toFixed(1) + '°';
+    
+    document.getElementById('leftArmPitch').textContent = config.leftArmData.pitch.toFixed(1) + '°';
+    document.getElementById('leftArmRoll').textContent = config.leftArmData.roll.toFixed(1) + '°';
+    document.getElementById('leftArmYaw').textContent = config.leftArmData.yaw.toFixed(1) + '°';
+    
+    // Обновление отладочной информации
+    document.getElementById('headAbsoluteAngles').textContent = 
+        `${config.headData.pitch.toFixed(1)}°, ${config.headData.roll.toFixed(1)}°, ${config.headData.yaw.toFixed(1)}°`;
+    document.getElementById('headRelativeAngles').textContent = 
+        `${config.headData.relPitch.toFixed(1)}°, ${config.headData.relRoll.toFixed(1)}°, ${config.headData.relYaw.toFixed(1)}°`;
+    
+    document.getElementById('bodyAbsoluteAngles').textContent = 
+        `${config.bodyData.pitch.toFixed(1)}°, ${config.bodyData.roll.toFixed(1)}°, ${config.bodyData.yaw.toFixed(1)}°`;
+    document.getElementById('bodyRelativeAngles').textContent = 
+        `${config.bodyData.relPitch.toFixed(1)}°, ${config.bodyData.relRoll.toFixed(1)}°, ${config.bodyData.relYaw.toFixed(1)}°`;
+    
+    document.getElementById('leftArmAbsoluteAngles').textContent = 
+        `${config.leftArmData.pitch.toFixed(1)}°, ${config.leftArmData.roll.toFixed(1)}°, ${config.leftArmData.yaw.toFixed(1)}°`;
+    document.getElementById('leftArmRelativeAngles').textContent = 
+        `${config.leftArmData.relPitch.toFixed(1)}°, ${config.leftArmData.relRoll.toFixed(1)}°, ${config.leftArmData.relYaw.toFixed(1)}°`;
+    
+    document.getElementById('bodyDirection').textContent = `${config.bodyData.yaw.toFixed(1)}°`;
+}
+
+// Функции подключения к датчикам
+function connectHead() {
+    if (config.headWebSocket && config.headWebSocket.readyState === WebSocket.OPEN) {
+        showNotification("Уже подключено к датчику головы", "info");
+        return;
+    }
+    
+    try {
+        config.headWebSocket = new WebSocket(`ws://192.168.5.103:81`);
+        setupWebSocketHandlers(config.headWebSocket, 'head');
+    } catch (error) {
+        showNotification("Ошибка подключения к датчику головы", "error");
+    }
+}
+
+function connectBody() {
+    if (config.bodyWebSocket && config.bodyWebSocket.readyState === WebSocket.OPEN) {
+        showNotification("Уже подключено к датчику тела", "info");
+        return;
+    }
+    
+    try {
+        config.bodyWebSocket = new WebSocket(`ws://192.168.5.104:81`);
+        setupWebSocketHandlers(config.bodyWebSocket, 'body');
+    } catch (error) {
+        showNotification("Ошибка подключения к датчику тела", "error");
+    }
+}
+
+function connectLeftArm() {
+    if (config.leftArmWebSocket && config.leftArmWebSocket.readyState === WebSocket.OPEN) {
+        showNotification("Уже подключено к датчику левой руки", "info");
+        return;
+    }
+    
+    try {
+        config.leftArmWebSocket = new WebSocket(`ws://192.168.5.105:81`);
+        setupWebSocketHandlers(config.leftArmWebSocket, 'leftArm');
+    } catch (error) {
+        showNotification("Ошибка подключения к датчику левой руки", "error");
+    }
+}
+
+function setupWebSocketHandlers(websocket, sensorType) {
+    const statusElement = document.getElementById(sensorType + 'Status');
+    const statusText = sensorType === 'head' ? 'голове' : sensorType === 'body' ? 'теле' : 'левой руке';
+    
+    websocket.onopen = function() {
+        config[sensorType + 'Connected'] = true;
+        statusElement.textContent = "Подключено";
+        statusElement.className = "status-value connected";
+        showNotification(`Подключено к датчику на ${statusText}`, "success");
+    };
+    
+    websocket.onmessage = function(event) {
+        processSensorData(event.data, sensorType);
+    };
+    
+    websocket.onclose = function() {
+        config[sensorType + 'Connected'] = false;
+        statusElement.textContent = "Отключен";
+        statusElement.className = "status-value disconnected";
+    };
+    
+    websocket.onerror = function(error) {
+        showNotification(`Ошибка WebSocket для ${statusText}`, "error");
+    };
+}
+
+function processSensorData(data, sensorType) {
+    try {
+        // Пробуем сначала распарсить как JSON
+        try {
+            const jsonData = JSON.parse(data);
             
-            // Передняя грань
-            const frontText = createTextSprite('ПЕРЕД', 0xFFFFFF);
-            frontText.position.set(0, 0, size);
-            cube.add(frontText);
-            labels.push(frontText);
-            
-            // Задняя грань
-            const backText = createTextSprite('ЗАД', 0xFFFFFF);
-            backText.position.set(0, 0, -size);
-            backText.rotation.y = Math.PI;
-            cube.add(backText);
-            labels.push(backText);
-            
-            // Левая грань
-            const leftText = createTextSprite('ЛЕВО', 0xFFFFFF);
-            leftText.position.set(-size, 0, 0);
-            leftText.rotation.y = Math.PI / 2;
-            cube.add(leftText);
-            labels.push(leftText);
-            
-            // Правая грань
-            const rightText = createTextSprite('ПРАВО', 0xFFFFFF);
-            rightText.position.set(size, 0, 0);
-            rightText.rotation.y = -Math.PI / 2;
-            cube.add(rightText);
-            labels.push(rightText);
-            
-            // Верхняя грань (только для головы)
-            if (cubeType === 'head') {
-                const topText = createTextSprite('ВЕРХ', 0xFFFFFF);
-                topText.position.set(0, size, 0);
-                topText.rotation.x = -Math.PI / 2;
-                cube.add(topText);
-                labels.push(topText);
+            if (jsonData.type === 'sensorData') {
+                // Обновление данных сенсора из JSON
+                config[sensorType + 'Data'].pitch = jsonData.pitch || 0;
+                config[sensorType + 'Data'].roll = jsonData.roll || 0;
+                config[sensorType + 'Data'].yaw = jsonData.yaw || 0;
+                config[sensorType + 'Data'].relPitch = jsonData.relPitch || 0;
+                config[sensorType + 'Data'].relRoll = jsonData.relRoll || 0;
+                config[sensorType + 'Data'].relYaw = jsonData.relYaw || 0;
+                config[sensorType + 'Data'].calibrated = jsonData.calibrated || false;
+                config[sensorType + 'Data'].zeroSet = jsonData.zeroSet || false;
+            } else if (jsonData.type === 'status') {
+                showNotification(jsonData.message, "info");
             }
-            
-            // Нижняя грань (только для тела)
-            if (cubeType === 'body') {
-                const bottomText = createTextSprite('НИЗ', 0xFFFFFF);
-                bottomText.position.set(0, -size, 0);
-                bottomText.rotation.x = Math.PI / 2;
-                cube.add(bottomText);
-                labels.push(bottomText);
-            }
-            
-            return labels;
-        }
-
-        // Обновление позиции камеры
-        function updateCameraPosition() {
-            const phi = THREE.MathUtils.degToRad(cameraControls.cameraAngleX);
-            const theta = THREE.MathUtils.degToRad(cameraControls.cameraAngleY);
-            
-            const x = cameraControls.cameraDistance * Math.sin(phi) * Math.cos(theta);
-            const y = cameraControls.cameraDistance * Math.sin(theta) + 1.5; // Смещение камеры вверх для лучшего обзора
-            const z = cameraControls.cameraDistance * Math.cos(phi) * Math.cos(theta);
-            
-            camera.position.set(x, y, z);
-            camera.lookAt(0, 1.5, 0); // Смотрим на уровень основания тела
-        }
-
-        // Обработчики событий мыши
-        function initMouseControls() {
-            const container = document.getElementById('visualizationContainer');
-            
-            // Нажатие мыши
-            container.addEventListener('mousedown', function(event) {
-                if (event.button === 0) { // Левая кнопка мыши
-                    cameraControls.isMouseDown = true;
-                    cameraControls.lastMouseX = event.clientX;
-                    cameraControls.lastMouseY = event.clientY;
-                    container.style.cursor = 'grabbing';
+            return; // Успешно обработали JSON, выходим
+        } catch (jsonError) {
+            // Если не JSON, пробуем обработать как текстовый формат
+            if (typeof data === 'string' && data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
+                // Обработка текстового формата: PITCH:85.4,ROLL:-22.7,YAW:59.7,...
+                const pitchMatch = data.match(/PITCH:([-\d.]+)/);
+                const rollMatch = data.match(/ROLL:([-\d.]+)/);
+                const yawMatch = data.match(/YAW:([-\d.]+)/);
+                const relPitchMatch = data.match(/REL_PITCH:([-\d.]+)/);
+                const relRollMatch = data.match(/REL_ROLL:([-\d.]+)/);
+                const relYawMatch = data.match(/REL_YAW:([-\d.]+)/);
+                const zeroSetMatch = data.match(/ZERO_SET:(true|false)/);
+                
+                if (pitchMatch && rollMatch && yawMatch) {
+                    config[sensorType + 'Data'].pitch = parseFloat(pitchMatch[1]) || 0;
+                    config[sensorType + 'Data'].roll = parseFloat(rollMatch[1]) || 0;
+                    config[sensorType + 'Data'].yaw = parseFloat(yawMatch[1]) || 0;
+                    
+                    // Относительные углы (если есть)
+                    config[sensorType + 'Data'].relPitch = relPitchMatch ? parseFloat(relPitchMatch[1]) || 0 : config[sensorType + 'Data'].pitch;
+                    config[sensorType + 'Data'].relRoll = relRollMatch ? parseFloat(relRollMatch[1]) || 0 : config[sensorType + 'Data'].roll;
+                    config[sensorType + 'Data'].relYaw = relYawMatch ? parseFloat(relYawMatch[1]) || 0 : config[sensorType + 'Data'].yaw;
+                    
+                    // Статус нулевой точки
+                    config[sensorType + 'Data'].zeroSet = zeroSetMatch ? zeroSetMatch[1] === 'true' : false;
+                    
+                    // Для совместимости
+                    config[sensorType + 'Data'].calibrated = true;
                 }
-            });
-            
-            // Отпускание мыши
-            container.addEventListener('mouseup', function(event) {
-                if (event.button === 0) {
-                    cameraControls.isMouseDown = false;
-                    container.style.cursor = 'grab';
-                }
-            });
-            
-            // Выход мыши за пределы контейнера
-            container.addEventListener('mouseleave', function() {
-                cameraControls.isMouseDown = false;
-                container.style.cursor = 'grab';
-            });
-            
-            // Движение мыши
-            container.addEventListener('mousemove', function(event) {
-                if (!cameraControls.isMouseDown) return;
-                
-                const deltaX = event.clientX - cameraControls.lastMouseX;
-                const deltaY = event.clientY - cameraControls.lastMouseY;
-                
-                cameraControls.cameraAngleX += deltaX * 0.5;
-                cameraControls.cameraAngleY += deltaY * 0.5;
-                
-                // Ограничение угла Y чтобы камера не переворачивалась
-                cameraControls.cameraAngleY = Math.max(-85, Math.min(85, cameraControls.cameraAngleY));
-                
-                cameraControls.lastMouseX = event.clientX;
-                cameraControls.lastMouseY = event.clientY;
-                
-                updateCameraPosition();
-            });
-            
-            // Колесико мыши (зум)
-            container.addEventListener('wheel', function(event) {
-                event.preventDefault();
-                
-                const zoomSpeed = 0.1;
-                cameraControls.cameraDistance += event.deltaY * zoomSpeed;
-                
-                // Ограничения расстояния камеры
-                cameraControls.cameraDistance = Math.max(3, Math.min(50, cameraControls.cameraDistance));
-                
-                updateCameraPosition();
-            });
-        }
-        
-        // Сброс камеры
-        function resetCamera() {
-            cameraControls.cameraDistance = 12;
-            cameraControls.cameraAngleX = 0;
-            cameraControls.cameraAngleY = 30;
-            updateCameraPosition();
-            showNotification("Камера сброшена", "info");
-        }
-        
-        // Переключение автовращения
-        function toggleAutoRotate() {
-            cameraControls.autoRotate = !cameraControls.autoRotate;
-            document.getElementById('autoRotateBtn').textContent = 
-                `Автовращение: ${cameraControls.autoRotate ? 'Вкл' : 'Выкл'}`;
-            showNotification(`Автовращение ${cameraControls.autoRotate ? 'включено' : 'выключено'}`, "info");
-        }
-        
-        // Фокус на голову
-        function focusOnHead() {
-            cameraControls.cameraDistance = 6;
-            cameraControls.cameraAngleX = 0;
-            cameraControls.cameraAngleY = 20;
-            updateCameraPosition();
-            showNotification("Фокус на голову", "info");
-        }
-        
-        // Фокус на тело
-        function focusOnBody() {
-            cameraControls.cameraDistance = 8;
-            cameraControls.cameraAngleX = 0;
-            cameraControls.cameraAngleY = 10;
-            updateCameraPosition();
-            showNotification("Фокус на тело", "info");
-        }
-        
-        // Инициализация 3D сцены
-        function initScene() {
-            // Создание сцены
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a2e);
-            
-            // Создание камеры
-            camera = new THREE.PerspectiveCamera(75, 
-                document.getElementById('scene').clientWidth / document.getElementById('scene').clientHeight, 
-                0.1, 1000);
-            
-            // Инициализация позиции камеры
-            cameraControls.cameraAngleY = 30;
-            updateCameraPosition();
-            
-            // Создание рендерера
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(document.getElementById('scene').clientWidth, 
-                            document.getElementById('scene').clientHeight);
-            document.getElementById('scene').appendChild(renderer.domElement);
-            
-            // Освещение
-            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-            scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(10, 10, 5);
-            scene.add(directionalLight);
-            
-            // Создание сетки пола
-            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
-            scene.add(gridHelper);
-            
-            // Группа для всего игрока - точка вращения в основании
-            playerGroup = new THREE.Group();
-            playerGroup.position.y = 0; // Основание тела на уровне пола
-            scene.add(playerGroup);
-            
-            // Контейнер для тела - смещен вверх от точки вращения
-            bodyContainer = new THREE.Group();
-            bodyContainer.position.y = 1.5; // Центр тела находится на высоте 1.5 единиц от основания
-            playerGroup.add(bodyContainer);
-            
-            // Создание тела (параллелепипед)
-            const bodyGeometry = new THREE.BoxGeometry(1.5, 3, 0.8);
-            const bodyMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0x2196F3,
-                transparent: true,
-                opacity: 0.8,
-                wireframe: false
-            });
-            bodyCube = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            // Тело уже находится в правильной позиции относительно контейнера
-            bodyContainer.add(bodyCube);
-            
-            // Добавление надписей на тело
-            addLabelsToCube(bodyCube, 'body');
-            
-            // Контейнер для головы (прикреплен к телу)
-            headContainer = new THREE.Group();
-            headContainer.position.y = 2.5; // Позиция головы относительно тела
-            bodyCube.add(headContainer); // Голова прикреплена к телу!
-            
-            // Создание головы (куб)
-            const headGeometry = new THREE.BoxGeometry(1, 1, 1);
-            const headMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0xFF5722,
-                transparent: true,
-                opacity: 0.8,
-                wireframe: false
-            });
-            headCube = new THREE.Mesh(headGeometry, headMaterial);
-            headContainer.add(headCube);
-            
-            // Добавление надписей на голову
-            addLabelsToCube(headCube, 'head');
-            
-            // Шея (соединительный цилиндр)
-            const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
-            const neckMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
-            const neck = new THREE.Mesh(neckGeometry, neckMaterial);
-            neck.position.y = -0.25; // Позиция шеи относительно головы
-            headContainer.add(neck);
-            
-            // Визуализация точки вращения (красная точка в основании)
-            const rotationPointGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-            const rotationPointMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-            const rotationPoint = new THREE.Mesh(rotationPointGeometry, rotationPointMaterial);
-            rotationPoint.position.y = 0; // Точка вращения в основании
-            playerGroup.add(rotationPoint);
-            
-            // Оси координат для отладки (в точке вращения)
-            const axesHelper = new THREE.AxesHelper(2);
-            playerGroup.add(axesHelper);
-            
-            // Инициализация управления мышью
-            initMouseControls();
-            
-            // Анимация
-            animate();
-            
-            // Обработка изменения размера окна
-            window.addEventListener('resize', onWindowResize);
-        }
-        
-        function onWindowResize() {
-            const container = document.getElementById('scene');
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        }
-        
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Автовращение камеры
-            if (cameraControls.autoRotate) {
-                cameraControls.cameraAngleX += cameraControls.autoRotateSpeed;
-                updateCameraPosition();
+                return; // Успешно обработали текстовый формат
             }
             
-            updatePlayerPosition();
-            renderer.render(scene, camera);
-        }
-        
-        function updatePlayerPosition() {
-            // Вращение происходит вокруг основания тела (playerGroup)
-            
-            // ТЕЛО: Глобальная ориентация + локальные наклоны
-            bodyController.setGlobalOrientation(config.bodyData.yaw);
-            bodyController.applyLocalTilt(config.bodyData.pitch, config.bodyData.roll);
-            
-            // Применяем вращение ко всей группе игрока (вокруг основания)
-            playerGroup.setRotationFromQuaternion(bodyController.getQuaternion());
-            
-            // ГОЛОВА: Локальные повороты относительно тела
-            headController.setGlobalOrientation(config.headData.yaw);
-            headController.applyLocalTilt(config.headData.pitch, config.headData.roll);
-            headCube.setRotationFromQuaternion(headController.getQuaternion());
-            
-            // Обновление отладочной информации
-            updateDebugInfo();
-        }
-        
-        function updateDebugInfo() {
-            document.getElementById('headPitch').textContent = config.headData.pitch.toFixed(1) + '°';
-            document.getElementById('headRoll').textContent = config.headData.roll.toFixed(1) + '°';
-            document.getElementById('headYaw').textContent = config.headData.yaw.toFixed(1) + '°';
-            
-            document.getElementById('bodyPitch').textContent = config.bodyData.pitch.toFixed(1) + '°';
-            document.getElementById('bodyRoll').textContent = config.bodyData.roll.toFixed(1) + '°';
-            document.getElementById('bodyYaw').textContent = config.bodyData.yaw.toFixed(1) + '°';
-            
-            // Отладочная информация
-            document.getElementById('headLocalAngles').textContent = 
-                `${config.headData.pitch.toFixed(1)}°, ${config.headData.roll.toFixed(1)}°, ${config.headData.yaw.toFixed(1)}°`;
-            
-            document.getElementById('bodyLocalAngles').textContent = 
-                `${config.bodyData.pitch.toFixed(1)}°, ${config.bodyData.roll.toFixed(1)}°, ${config.bodyData.yaw.toFixed(1)}°`;
-            
-            document.getElementById('bodyDirection').textContent = 
-                `${config.bodyData.yaw.toFixed(1)}°`;
-        }
-        
-        // Функции подключения к датчикам
-        function connectHead() {
-            if (config.headWebSocket && config.headWebSocket.readyState === WebSocket.OPEN) {
-                showNotification("Уже подключено к датчику головы", "info");
+            // Если это не JSON и не текстовый формат сенсора, возможно это статусное сообщение
+            if (typeof data === 'string' && data.length < 100) {
+                showNotification(`${sensorType}: ${data}`, "info");
                 return;
             }
             
-            try {
-                config.headWebSocket = new WebSocket(`ws://192.168.5.103:81`);
-                
-                config.headWebSocket.onopen = function() {
-                    config.headConnected = true;
-                    document.getElementById('headStatus').textContent = "Подключено";
-                    document.getElementById('headStatus').className = "status-value connected";
-                    showNotification("Подключено к датчику на голове", "success");
-                };
-                
-                config.headWebSocket.onmessage = function(event) {
-                    processHeadData(event.data);
-                };
-                
-                config.headWebSocket.onclose = function() {
-                    config.headConnected = false;
-                    document.getElementById('headStatus').textContent = "Отключен";
-                    document.getElementById('headStatus').className = "status-value disconnected";
-                };
-                
-            } catch (error) {
-                showNotification("Ошибка подключения к датчику головы", "error");
-            }
+            // Если ничего не подошло, выводим ошибку
+            throw new Error(`Неизвестный формат данных для ${sensorType}`);
         }
-        
-        function connectBody() {
-            if (config.bodyWebSocket && config.bodyWebSocket.readyState === WebSocket.OPEN) {
-                showNotification("Уже подключено к датчику тела", "info");
-                return;
-            }
-            
-            try {
-                config.bodyWebSocket = new WebSocket(`ws://192.168.5.104:81`);
-                
-                config.bodyWebSocket.onopen = function() {
-                    config.bodyConnected = true;
-                    document.getElementById('bodyStatus').textContent = "Подключено";
-                    document.getElementById('bodyStatus').className = "status-value connected";
-                    showNotification("Подключено к датчику на теле", "success");
-                };
-                
-                config.bodyWebSocket.onmessage = function(event) {
-                    processBodyData(event.data);
-                };
-                
-                config.bodyWebSocket.onclose = function() {
-                    config.bodyConnected = false;
-                    document.getElementById('bodyStatus').textContent = "Отключен";
-                    document.getElementById('bodyStatus').className = "status-value disconnected";
-                };
-                
-            } catch (error) {
-                showNotification("Ошибка подключения к датчику тела", "error");
-            }
-        }
-        
-        function processHeadData(data) {
-            try {
-                if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
-                    const pitchMatch = data.match(/PITCH:([-\d.]+)/);
-                    const rollMatch = data.match(/ROLL:([-\d.]+)/);
-                    const yawMatch = data.match(/YAW:([-\d.]+)/);
-                    
-                    if (pitchMatch && rollMatch && yawMatch) {
-                        config.headData.pitch = parseFloat(pitchMatch[1]);
-                        config.headData.roll = parseFloat(rollMatch[1]);
-                        config.headData.yaw = parseFloat(yawMatch[1]);
-                    }
-                }
-            } catch (error) {
-                console.error("Ошибка обработки данных головы:", error);
-            }
-        }
-        
-        function processBodyData(data) {
-            try {
-                if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
-                    const pitchMatch = data.match(/PITCH:([-\d.]+)/);
-                    const rollMatch = data.match(/ROLL:([-\d.]+)/);
-                    const yawMatch = data.match(/YAW:([-\d.]+)/);
-                    
-                    if (pitchMatch && rollMatch && yawMatch) {
-                        config.bodyData.pitch = parseFloat(pitchMatch[1]);
-                        config.bodyData.roll = parseFloat(rollMatch[1]);
-                        config.bodyData.yaw = parseFloat(yawMatch[1]);
-                    }
-                }
-            } catch (error) {
-                console.error("Ошибка обработки данных тела:", error);
-            }
-        }
-        
-        function sendHeadCommand(command) {
-            if (config.headWebSocket && config.headWebSocket.readyState === WebSocket.OPEN) {
-                config.headWebSocket.send(command);
-                showNotification("Команда отправлена датчику головы: " + command, "success");
-            } else {
-                showNotification("Нет подключения к датчику головы", "error");
-            }
-        }
-        
-        function sendBodyCommand(command) {
-            if (config.bodyWebSocket && config.bodyWebSocket.readyState === WebSocket.OPEN) {
-                config.bodyWebSocket.send(command);
-                showNotification("Команда отправлена датчику тела: " + command, "success");
-            } else {
-                showNotification("Нет подключения к датчику тела", "error");
-            }
-        }
-        
-        function showNotification(message, type) {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.className = `notification ${type} show`;
-            
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-        
-        // Инициализация при загрузке страницы
-        window.onload = function() {
-            initScene();
-            
-            // Автоподключение
-            setTimeout(() => {
-                connectHead();
-                connectBody();
-            }, 1000);
-        };
-    </script>
+    } catch (error) {
+        console.error(`Ошибка обработки данных ${sensorType}:`, error, "Данные:", data);
+    }
+}
+
+function sendHeadCommand(command) {
+    sendCommand(config.headWebSocket, command, 'головы');
+}
+
+function sendBodyCommand(command) {
+    sendCommand(config.bodyWebSocket, command, 'тела');
+}
+
+function sendLeftArmCommand(command) {
+    sendCommand(config.leftArmWebSocket, command, 'левой руки');
+}
+
+function sendCommand(websocket, command, sensorName) {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const message = JSON.stringify({ type: command });
+        websocket.send(message);
+        showNotification(`Команда отправлена датчику ${sensorName}: ${command}`, "success");
+    } else {
+        showNotification(`Нет подключения к датчику ${sensorName}`, "error");
+    }
+}
+
+function showNotification(message, type) {
+    const notification = document.getElementById('notification');
+    notification.textContent = message;
+    notification.className = `notification ${type} show`;
+    
+    setTimeout(() => {
+        notification.classList.remove('show');
+    }, 3000);
+}
+
+// Инициализация при загрузке страницы
+window.onload = function() {
+    initScene();
+    
+    // Автоподключение
+    setTimeout(() => {
+        connectHead();
+        connectBody();
+        connectLeftArm();
+    }, 1000);
+};	
+	</script>
 </body>
 </html>
