@@ -201,13 +201,20 @@
         .notification.error {
             border-left: 4px solid #F44336;
         }
+
+        .info-panel {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>VR Player Tracking - Синхронное движение</h1>
-            <p>Голова жестко прикреплена к туловищу</p>
+            <p>Голова жестко прикреплена к туловищу с надписями направлений</p>
         </header>
 
         <div class="content">
@@ -234,6 +241,7 @@
                 <div class="controls">
                     <button onclick="connectHead()">Подключить голову</button>
                     <button class="btn-success" onclick="sendHeadCommand('SET_ZERO')">Установить ноль</button>
+                    <button class="btn-warning" onclick="sendHeadCommand('RECALIBRATE')">Калибровать</button>
                 </div>
             </div>
 
@@ -260,6 +268,7 @@
                 <div class="controls">
                     <button onclick="connectBody()">Подключить тело</button>
                     <button class="btn-success" onclick="sendBodyCommand('SET_ZERO')">Установить ноль</button>
+                    <button class="btn-warning" onclick="sendBodyCommand('RECALIBRATE')">Калибровать</button>
                 </div>
             </div>
         </div>
@@ -278,6 +287,10 @@
                     <div class="legend-color body-color"></div>
                     <div>Тело (основное движение)</div>
                 </div>
+            </div>
+            <div class="info-panel">
+                <p><strong>Надписи на кубах:</strong> ПЕРЕД - передняя сторона, ЗАД - задняя, ЛЕВО - левая, ПРАВО - правая</p>
+                <p><strong>Голова приподнята</strong> над телом для предотвращения пересечения граней при поворотах</p>
             </div>
         </div>
     </div>
@@ -302,6 +315,83 @@
         // Three.js сцена
         let scene, camera, renderer;
         let headCube, bodyCube, playerGroup;
+        
+        // Создание текста для куба
+        function createTextSprite(message, color = 0xffffff) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 256;
+            
+            context.fillStyle = 'rgba(0, 0, 0, 0)';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            context.font = 'Bold 40px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillStyle = `rgb(${color === 0xffffff ? '255,255,255' : '0,0,0'})`;
+            context.fillText(message, canvas.width / 2, canvas.height / 2);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(1, 1, 1);
+            
+            return sprite;
+        }
+
+        // Добавление надписей на куб
+        function addLabelsToCube(cube, cubeType) {
+            const labels = [];
+            const size = cubeType === 'head' ? 0.6 : 0.8;
+            
+            // Передняя грань
+            const frontText = createTextSprite('ПЕРЕД', 0xFFFFFF);
+            frontText.position.set(0, 0, size);
+            cube.add(frontText);
+            labels.push(frontText);
+            
+            // Задняя грань
+            const backText = createTextSprite('ЗАД', 0xFFFFFF);
+            backText.position.set(0, 0, -size);
+            backText.rotation.y = Math.PI;
+            cube.add(backText);
+            labels.push(backText);
+            
+            // Левая грань
+            const leftText = createTextSprite('ЛЕВО', 0xFFFFFF);
+            leftText.position.set(-size, 0, 0);
+            leftText.rotation.y = Math.PI / 2;
+            cube.add(leftText);
+            labels.push(leftText);
+            
+            // Правая грань
+            const rightText = createTextSprite('ПРАВО', 0xFFFFFF);
+            rightText.position.set(size, 0, 0);
+            rightText.rotation.y = -Math.PI / 2;
+            cube.add(rightText);
+            labels.push(rightText);
+            
+            // Верхняя грань (только для головы)
+            if (cubeType === 'head') {
+                const topText = createTextSprite('ВЕРХ', 0xFFFFFF);
+                topText.position.set(0, size, 0);
+                topText.rotation.x = -Math.PI / 2;
+                cube.add(topText);
+                labels.push(topText);
+            }
+            
+            // Нижняя грань (только для тела)
+            if (cubeType === 'body') {
+                const bottomText = createTextSprite('НИЗ', 0xFFFFFF);
+                bottomText.position.set(0, -size, 0);
+                bottomText.rotation.x = Math.PI / 2;
+                cube.add(bottomText);
+                labels.push(bottomText);
+            }
+            
+            return labels;
+        }
         
         // Инициализация 3D сцены
         function initScene() {
@@ -343,28 +433,37 @@
             const bodyMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0x2196F3,
                 transparent: true,
-                opacity: 0.9
+                opacity: 0.8,
+                wireframe: false
             });
             bodyCube = new THREE.Mesh(bodyGeometry, bodyMaterial);
             bodyCube.position.y = 1.5; // Центр тела
             playerGroup.add(bodyCube);
             
-            // Создание головы (куб)
+            // Добавление надписей на тело
+            addLabelsToCube(bodyCube, 'body');
+            
+            // Создание головы (куб) - ПРИПОДНЯТА ВЫШЕ
             const headGeometry = new THREE.BoxGeometry(1, 1, 1);
             const headMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0xFF5722,
                 transparent: true,
-                opacity: 0.9
+                opacity: 0.8,
+                wireframe: false
             });
             headCube = new THREE.Mesh(headGeometry, headMaterial);
-            headCube.position.y = 3.5; // Голова над телом (1.5 + 2)
+            // Голова приподнята выше для предотвращения пересечений
+            headCube.position.y = 4.0; // Было 3.5, теперь 4.0 (+0.5 для зазора)
             playerGroup.add(headCube);
             
-            // Шея (соединительный цилиндр)
-            const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
+            // Добавление надписей на голову
+            addLabelsToCube(headCube, 'head');
+            
+            // Шея (соединительный цилиндр) - УДЛИНЕНА
+            const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.0, 8); // Увеличена длина с 0.5 до 1.0
             const neckMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
             const neck = new THREE.Mesh(neckGeometry, neckMaterial);
-            neck.position.y = 3.0; // Между телом и головой
+            neck.position.y = 3.25; // Выше для соответствия новой высоте головы
             playerGroup.add(neck);
             
             // Оси координат для отладки
@@ -521,6 +620,7 @@
         function sendHeadCommand(command) {
             if (config.headWebSocket && config.headWebSocket.readyState === WebSocket.OPEN) {
                 config.headWebSocket.send(command);
+                showNotification("Команда отправлена датчику головы: " + command, "success");
             } else {
                 showNotification("Нет подключения к датчику головы", "error");
             }
@@ -529,6 +629,7 @@
         function sendBodyCommand(command) {
             if (config.bodyWebSocket && config.bodyWebSocket.readyState === WebSocket.OPEN) {
                 config.bodyWebSocket.send(command);
+                showNotification("Команда отправлена датчику тела: " + command, "success");
             } else {
                 showNotification("Нет подключения к датчику тела", "error");
             }
