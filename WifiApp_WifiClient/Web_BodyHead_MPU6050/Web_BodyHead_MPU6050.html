@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Player Tracking - Синхронное движение</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            color: white;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel h2 {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .status-item {
+            flex: 1;
+            min-width: 150px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .status-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .connected {
+            color: #4CAF50;
+        }
+
+        .disconnected {
+            color: #F44336;
+        }
+
+        .visualization-container {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        #scene {
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #2196F3;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #1976D2;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #4CAF50;
+        }
+
+        .btn-success:hover {
+            background: #388E3C;
+        }
+
+        .btn-warning {
+            background: #FF9800;
+        }
+
+        .btn-warning:hover {
+            background: #F57C00;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .head-color {
+            background: #FF5722;
+        }
+
+        .body-color {
+            background: #2196F3;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            z-index: 1000;
+            transform: translateX(150%);
+            transition: transform 0.3s ease;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            border-left: 4px solid #4CAF50;
+        }
+
+        .notification.error {
+            border-left: 4px solid #F44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>VR Player Tracking - Синхронное движение</h1>
+            <p>Голова жестко прикреплена к туловищу</p>
+        </header>
+
+        <div class="content">
+            <div class="panel">
+                <h2>Датчик на голове</h2>
+                <div class="status-container">
+                    <div class="status-item">
+                        <div>Статус</div>
+                        <div class="status-value" id="headStatus">Отключен</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Pitch</div>
+                        <div class="status-value" id="headPitch">0°</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Roll</div>
+                        <div class="status-value" id="headRoll">0°</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Yaw</div>
+                        <div class="status-value" id="headYaw">0°</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button onclick="connectHead()">Подключить голову</button>
+                    <button class="btn-success" onclick="sendHeadCommand('SET_ZERO')">Установить ноль</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Датчик на теле</h2>
+                <div class="status-container">
+                    <div class="status-item">
+                        <div>Статус</div>
+                        <div class="status-value" id="bodyStatus">Отключен</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Pitch</div>
+                        <div class="status-value" id="bodyPitch">0°</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Roll</div>
+                        <div class="status-value" id="bodyRoll">0°</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Yaw</div>
+                        <div class="status-value" id="bodyYaw">0°</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button onclick="connectBody()">Подключить тело</button>
+                    <button class="btn-success" onclick="sendBodyCommand('SET_ZERO')">Установить ноль</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>3D Модель игрока</h2>
+            <div class="visualization-container">
+                <div id="scene"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color head-color"></div>
+                    <div>Голова (движение + повороты)</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color body-color"></div>
+                    <div>Тело (основное движение)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        // Конфигурация
+        const config = {
+            headSensorUrl: "http://192.168.5.103",
+            bodySensorUrl: "http://192.168.5.104",
+            headWebSocket: null,
+            bodyWebSocket: null,
+            headConnected: false,
+            bodyConnected: false,
+            headData: { pitch: 0, roll: 0, yaw: 0 },
+            bodyData: { pitch: 0, roll: 0, yaw: 0 }
+        };
+
+        // Three.js сцена
+        let scene, camera, renderer;
+        let headCube, bodyCube, playerGroup;
+        
+        // Инициализация 3D сцены
+        function initScene() {
+            // Создание сцены
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            
+            // Создание камеры
+            camera = new THREE.PerspectiveCamera(75, 
+                document.getElementById('scene').clientWidth / document.getElementById('scene').clientHeight, 
+                0.1, 1000);
+            camera.position.set(0, 8, 12);
+            camera.lookAt(0, 0, 0);
+            
+            // Создание рендерера
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(document.getElementById('scene').clientWidth, 
+                            document.getElementById('scene').clientHeight);
+            document.getElementById('scene').appendChild(renderer.domElement);
+            
+            // Освещение
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            scene.add(directionalLight);
+            
+            // Создание сетки пола
+            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+            scene.add(gridHelper);
+            
+            // Группа для всего игрока
+            playerGroup = new THREE.Group();
+            scene.add(playerGroup);
+            
+            // Создание тела (параллелепипед)
+            const bodyGeometry = new THREE.BoxGeometry(1.5, 3, 0.8);
+            const bodyMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x2196F3,
+                transparent: true,
+                opacity: 0.9
+            });
+            bodyCube = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            bodyCube.position.y = 1.5; // Центр тела
+            playerGroup.add(bodyCube);
+            
+            // Создание головы (куб)
+            const headGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const headMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xFF5722,
+                transparent: true,
+                opacity: 0.9
+            });
+            headCube = new THREE.Mesh(headGeometry, headMaterial);
+            headCube.position.y = 3.5; // Голова над телом (1.5 + 2)
+            playerGroup.add(headCube);
+            
+            // Шея (соединительный цилиндр)
+            const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
+            const neckMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
+            const neck = new THREE.Mesh(neckGeometry, neckMaterial);
+            neck.position.y = 3.0; // Между телом и головой
+            playerGroup.add(neck);
+            
+            // Оси координат для отладки
+            const axesHelper = new THREE.AxesHelper(2);
+            playerGroup.add(axesHelper);
+            
+            // Анимация
+            animate();
+            
+            // Обработка изменения размера окна
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+        function onWindowResize() {
+            const container = document.getElementById('scene');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePlayerPosition();
+            renderer.render(scene, camera);
+        }
+        
+        function updatePlayerPosition() {
+            // ОБНОВЛЕННАЯ ЛОГИКА: Голова жестко прикреплена к телу
+            
+            // Тело вращается по данным с датчика тела
+            playerGroup.rotation.x = THREE.MathUtils.degToRad(config.bodyData.pitch);
+            playerGroup.rotation.z = THREE.MathUtils.degToRad(config.bodyData.roll);
+            playerGroup.rotation.y = THREE.MathUtils.degToRad(config.bodyData.yaw);
+            
+            // Голова получает ДОПОЛНИТЕЛЬНЫЕ повороты от датчика головы
+            // но относительно уже повернутого тела
+            headCube.rotation.x = THREE.MathUtils.degToRad(config.headData.pitch);
+            headCube.rotation.z = THREE.MathUtils.degToRad(config.headData.roll);
+            headCube.rotation.y = THREE.MathUtils.degToRad(config.headData.yaw);
+            
+            // Обновление отображения углов
+            updateDisplay();
+        }
+        
+        function updateDisplay() {
+            document.getElementById('headPitch').textContent = config.headData.pitch.toFixed(1) + '°';
+            document.getElementById('headRoll').textContent = config.headData.roll.toFixed(1) + '°';
+            document.getElementById('headYaw').textContent = config.headData.yaw.toFixed(1) + '°';
+            
+            document.getElementById('bodyPitch').textContent = config.bodyData.pitch.toFixed(1) + '°';
+            document.getElementById('bodyRoll').textContent = config.bodyData.roll.toFixed(1) + '°';
+            document.getElementById('bodyYaw').textContent = config.bodyData.yaw.toFixed(1) + '°';
+        }
+        
+        // Функции подключения к датчикам
+        function connectHead() {
+            if (config.headWebSocket && config.headWebSocket.readyState === WebSocket.OPEN) {
+                showNotification("Уже подключено к датчику головы", "info");
+                return;
+            }
+            
+            try {
+                config.headWebSocket = new WebSocket(`ws://192.168.5.103:81`);
+                
+                config.headWebSocket.onopen = function() {
+                    config.headConnected = true;
+                    document.getElementById('headStatus').textContent = "Подключено";
+                    document.getElementById('headStatus').className = "status-value connected";
+                    showNotification("Подключено к датчику на голове", "success");
+                };
+                
+                config.headWebSocket.onmessage = function(event) {
+                    processHeadData(event.data);
+                };
+                
+                config.headWebSocket.onclose = function() {
+                    config.headConnected = false;
+                    document.getElementById('headStatus').textContent = "Отключен";
+                    document.getElementById('headStatus').className = "status-value disconnected";
+                };
+                
+            } catch (error) {
+                showNotification("Ошибка подключения к датчику головы", "error");
+            }
+        }
+        
+        function connectBody() {
+            if (config.bodyWebSocket && config.bodyWebSocket.readyState === WebSocket.OPEN) {
+                showNotification("Уже подключено к датчику тела", "info");
+                return;
+            }
+            
+            try {
+                config.bodyWebSocket = new WebSocket(`ws://192.168.5.104:81`);
+                
+                config.bodyWebSocket.onopen = function() {
+                    config.bodyConnected = true;
+                    document.getElementById('bodyStatus').textContent = "Подключено";
+                    document.getElementById('bodyStatus').className = "status-value connected";
+                    showNotification("Подключено к датчику на теле", "success");
+                };
+                
+                config.bodyWebSocket.onmessage = function(event) {
+                    processBodyData(event.data);
+                };
+                
+                config.bodyWebSocket.onclose = function() {
+                    config.bodyConnected = false;
+                    document.getElementById('bodyStatus').textContent = "Отключен";
+                    document.getElementById('bodyStatus').className = "status-value disconnected";
+                };
+                
+            } catch (error) {
+                showNotification("Ошибка подключения к датчику тела", "error");
+            }
+        }
+        
+        function processHeadData(data) {
+            try {
+                if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
+                    const pitchMatch = data.match(/PITCH:([-\d.]+)/);
+                    const rollMatch = data.match(/ROLL:([-\d.]+)/);
+                    const yawMatch = data.match(/YAW:([-\d.]+)/);
+                    
+                    if (pitchMatch && rollMatch && yawMatch) {
+                        config.headData.pitch = parseFloat(pitchMatch[1]);
+                        config.headData.roll = parseFloat(rollMatch[1]);
+                        config.headData.yaw = parseFloat(yawMatch[1]);
+                    }
+                }
+            } catch (error) {
+                console.error("Ошибка обработки данных головы:", error);
+            }
+        }
+        
+        function processBodyData(data) {
+            try {
+                if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
+                    const pitchMatch = data.match(/PITCH:([-\d.]+)/);
+                    const rollMatch = data.match(/ROLL:([-\d.]+)/);
+                    const yawMatch = data.match(/YAW:([-\d.]+)/);
+                    
+                    if (pitchMatch && rollMatch && yawMatch) {
+                        config.bodyData.pitch = parseFloat(pitchMatch[1]);
+                        config.bodyData.roll = parseFloat(rollMatch[1]);
+                        config.bodyData.yaw = parseFloat(yawMatch[1]);
+                    }
+                }
+            } catch (error) {
+                console.error("Ошибка обработки данных тела:", error);
+            }
+        }
+        
+        function sendHeadCommand(command) {
+            if (config.headWebSocket && config.headWebSocket.readyState === WebSocket.OPEN) {
+                config.headWebSocket.send(command);
+            } else {
+                showNotification("Нет подключения к датчику головы", "error");
+            }
+        }
+        
+        function sendBodyCommand(command) {
+            if (config.bodyWebSocket && config.bodyWebSocket.readyState === WebSocket.OPEN) {
+                config.bodyWebSocket.send(command);
+            } else {
+                showNotification("Нет подключения к датчику тела", "error");
+            }
+        }
+        
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+        
+        // Инициализация при загрузке страницы
+        window.onload = function() {
+            initScene();
+            
+            // Автоподключение
+            setTimeout(() => {
+                connectHead();
+                connectBody();
+            }, 1000);
+        };
+    </script>
+</body>
+</html>
