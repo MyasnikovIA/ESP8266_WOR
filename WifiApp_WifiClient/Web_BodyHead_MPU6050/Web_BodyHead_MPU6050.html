@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Player Tracking - Синхронное движение</title>
+    <title>VR Player Tracking - Вращение от основания тела</title>
     <style>
         * {
             margin: 0;
@@ -104,6 +104,11 @@
             background: rgba(0, 0, 0, 0.2);
             border-radius: 15px;
             overflow: hidden;
+            cursor: grab;
+        }
+
+        .visualization-container:active {
+            cursor: grabbing;
         }
 
         #scene {
@@ -148,6 +153,14 @@
 
         .btn-warning:hover {
             background: #F57C00;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+        }
+
+        .btn-info:hover {
+            background: #138496;
         }
 
         .legend {
@@ -202,19 +215,55 @@
             border-left: 4px solid #F44336;
         }
 
+        .notification.info {
+            border-left: 4px solid #2196F3;
+        }
+
         .info-panel {
             background: rgba(255, 255, 255, 0.1);
             padding: 15px;
             border-radius: 10px;
             margin-top: 15px;
         }
+
+        .camera-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .help-text {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .debug-info {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .rotation-point {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #ff0000;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>VR Player Tracking - Синхронное движение</h1>
-            <p>Голова жестко прикреплена к туловищу с надписями направлений</p>
+            <h1>VR Player Tracking - Вращение от основания тела</h1>
+            <p>Точка вращения расположена в основании тела (ноги)</p>
         </header>
 
         <div class="content">
@@ -237,6 +286,9 @@
                         <div>Yaw</div>
                         <div class="status-value" id="headYaw">0°</div>
                     </div>
+                </div>
+                <div class="debug-info">
+                    Локальные углы головы: <span id="headLocalAngles">0, 0, 0</span>
                 </div>
                 <div class="controls">
                     <button onclick="connectHead()">Подключить голову</button>
@@ -265,6 +317,10 @@
                         <div class="status-value" id="bodyYaw">0°</div>
                     </div>
                 </div>
+                <div class="debug-info">
+                    Локальные углы тела: <span id="bodyLocalAngles">0, 0, 0</span><br>
+                    Направление тела: <span id="bodyDirection">0°</span>
+                </div>
                 <div class="controls">
                     <button onclick="connectBody()">Подключить тело</button>
                     <button class="btn-success" onclick="sendBodyCommand('SET_ZERO')">Установить ноль</button>
@@ -274,23 +330,33 @@
         </div>
 
         <div class="panel">
-            <h2>3D Модель игрока</h2>
-            <div class="visualization-container">
+            <h2>3D Модель игрока 
+                <span style="font-size: 0.8em; opacity: 0.8;">- Вращение от основания тела</span>
+            </h2>
+            <div class="visualization-container" id="visualizationContainer">
                 <div id="scene"></div>
+            </div>
+            <div class="camera-controls">
+                <button class="btn-info" onclick="resetCamera()">Сброс камеры</button>
+                <button class="btn-info" onclick="toggleAutoRotate()" id="autoRotateBtn">Автовращение: Выкл</button>
+                <button class="btn-info" onclick="focusOnHead()">Фокус на голову</button>
+                <button class="btn-info" onclick="focusOnBody()">Фокус на тело</button>
             </div>
             <div class="legend">
                 <div class="legend-item">
                     <div class="legend-color head-color"></div>
-                    <div>Голова (движение + повороты)</div>
+                    <div>Голова (прикреплена к телу)</div>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color body-color"></div>
-                    <div>Тело (основное движение)</div>
+                    <div>Тело (вращение от основания)</div>
                 </div>
             </div>
             <div class="info-panel">
-                <p><strong>Надписи на кубах:</strong> ПЕРЕД - передняя сторона, ЗАД - задняя, ЛЕВО - левая, ПРАВО - правая</p>
-                <p><strong>Голова приподнята</strong> над телом для предотвращения пересечения граней при поворотах</p>
+                <p><strong>Вращение от основания:</strong> Тело вращается вокруг точки в основании (ноги), а не вокруг центра</p>
+                <p><strong>Управление камерой:</strong> 
+                    <span class="help-text">ЛКМ + движение - вращение вокруг модели | Колесико - приближение/отдаление</span>
+                </p>
             </div>
         </div>
     </div>
@@ -312,9 +378,63 @@
             bodyData: { pitch: 0, roll: 0, yaw: 0 }
         };
 
-        // Three.js сцена
+        // Three.js сцена и управление камерой
         let scene, camera, renderer;
-        let headCube, bodyCube, playerGroup;
+        let headCube, bodyCube, playerGroup, headContainer, bodyContainer;
+        let cameraControls = {
+            isMouseDown: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            cameraDistance: 12,
+            cameraAngleX: 0,
+            cameraAngleY: 0,
+            autoRotate: false,
+            autoRotateSpeed: 0.5
+        };
+
+        // Класс для управления ориентацией с локальными поворотами
+        class OrientationController {
+            constructor() {
+                this.quaternion = new THREE.Quaternion();
+                this.euler = new THREE.Euler();
+            }
+
+            // Установка глобальной ориентации (yaw)
+            setGlobalOrientation(yaw) {
+                this.euler.set(0, THREE.MathUtils.degToRad(yaw), 0, 'YXZ');
+                this.quaternion.setFromEuler(this.euler);
+            }
+
+            // Применение локальных наклонов (pitch, roll)
+            applyLocalTilt(pitch, roll) {
+                // Создаем кватернион для локальных наклонов
+                const tiltQuaternion = new THREE.Quaternion();
+                const tiltEuler = new THREE.Euler(
+                    THREE.MathUtils.degToRad(pitch),
+                    0,
+                    THREE.MathUtils.degToRad(roll),
+                    'YXZ'
+                );
+                tiltQuaternion.setFromEuler(tiltEuler);
+
+                // Комбинируем с глобальной ориентацией
+                this.quaternion.multiply(tiltQuaternion);
+            }
+
+            // Получение результирующего кватерниона
+            getQuaternion() {
+                return this.quaternion;
+            }
+
+            // Сброс ориентации
+            reset() {
+                this.quaternion.identity();
+            }
+        }
+
+        // Контроллеры для головы и тела
+        const bodyController = new OrientationController();
+        const headController = new OrientationController();
         
         // Создание текста для куба
         function createTextSprite(message, color = 0xffffff) {
@@ -392,6 +512,115 @@
             
             return labels;
         }
+
+        // Обновление позиции камеры
+        function updateCameraPosition() {
+            const phi = THREE.MathUtils.degToRad(cameraControls.cameraAngleX);
+            const theta = THREE.MathUtils.degToRad(cameraControls.cameraAngleY);
+            
+            const x = cameraControls.cameraDistance * Math.sin(phi) * Math.cos(theta);
+            const y = cameraControls.cameraDistance * Math.sin(theta) + 1.5; // Смещение камеры вверх для лучшего обзора
+            const z = cameraControls.cameraDistance * Math.cos(phi) * Math.cos(theta);
+            
+            camera.position.set(x, y, z);
+            camera.lookAt(0, 1.5, 0); // Смотрим на уровень основания тела
+        }
+
+        // Обработчики событий мыши
+        function initMouseControls() {
+            const container = document.getElementById('visualizationContainer');
+            
+            // Нажатие мыши
+            container.addEventListener('mousedown', function(event) {
+                if (event.button === 0) { // Левая кнопка мыши
+                    cameraControls.isMouseDown = true;
+                    cameraControls.lastMouseX = event.clientX;
+                    cameraControls.lastMouseY = event.clientY;
+                    container.style.cursor = 'grabbing';
+                }
+            });
+            
+            // Отпускание мыши
+            container.addEventListener('mouseup', function(event) {
+                if (event.button === 0) {
+                    cameraControls.isMouseDown = false;
+                    container.style.cursor = 'grab';
+                }
+            });
+            
+            // Выход мыши за пределы контейнера
+            container.addEventListener('mouseleave', function() {
+                cameraControls.isMouseDown = false;
+                container.style.cursor = 'grab';
+            });
+            
+            // Движение мыши
+            container.addEventListener('mousemove', function(event) {
+                if (!cameraControls.isMouseDown) return;
+                
+                const deltaX = event.clientX - cameraControls.lastMouseX;
+                const deltaY = event.clientY - cameraControls.lastMouseY;
+                
+                cameraControls.cameraAngleX += deltaX * 0.5;
+                cameraControls.cameraAngleY += deltaY * 0.5;
+                
+                // Ограничение угла Y чтобы камера не переворачивалась
+                cameraControls.cameraAngleY = Math.max(-85, Math.min(85, cameraControls.cameraAngleY));
+                
+                cameraControls.lastMouseX = event.clientX;
+                cameraControls.lastMouseY = event.clientY;
+                
+                updateCameraPosition();
+            });
+            
+            // Колесико мыши (зум)
+            container.addEventListener('wheel', function(event) {
+                event.preventDefault();
+                
+                const zoomSpeed = 0.1;
+                cameraControls.cameraDistance += event.deltaY * zoomSpeed;
+                
+                // Ограничения расстояния камеры
+                cameraControls.cameraDistance = Math.max(3, Math.min(50, cameraControls.cameraDistance));
+                
+                updateCameraPosition();
+            });
+        }
+        
+        // Сброс камеры
+        function resetCamera() {
+            cameraControls.cameraDistance = 12;
+            cameraControls.cameraAngleX = 0;
+            cameraControls.cameraAngleY = 30;
+            updateCameraPosition();
+            showNotification("Камера сброшена", "info");
+        }
+        
+        // Переключение автовращения
+        function toggleAutoRotate() {
+            cameraControls.autoRotate = !cameraControls.autoRotate;
+            document.getElementById('autoRotateBtn').textContent = 
+                `Автовращение: ${cameraControls.autoRotate ? 'Вкл' : 'Выкл'}`;
+            showNotification(`Автовращение ${cameraControls.autoRotate ? 'включено' : 'выключено'}`, "info");
+        }
+        
+        // Фокус на голову
+        function focusOnHead() {
+            cameraControls.cameraDistance = 6;
+            cameraControls.cameraAngleX = 0;
+            cameraControls.cameraAngleY = 20;
+            updateCameraPosition();
+            showNotification("Фокус на голову", "info");
+        }
+        
+        // Фокус на тело
+        function focusOnBody() {
+            cameraControls.cameraDistance = 8;
+            cameraControls.cameraAngleX = 0;
+            cameraControls.cameraAngleY = 10;
+            updateCameraPosition();
+            showNotification("Фокус на тело", "info");
+        }
         
         // Инициализация 3D сцены
         function initScene() {
@@ -403,8 +632,10 @@
             camera = new THREE.PerspectiveCamera(75, 
                 document.getElementById('scene').clientWidth / document.getElementById('scene').clientHeight, 
                 0.1, 1000);
-            camera.position.set(0, 8, 12);
-            camera.lookAt(0, 0, 0);
+            
+            // Инициализация позиции камеры
+            cameraControls.cameraAngleY = 30;
+            updateCameraPosition();
             
             // Создание рендерера
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -424,9 +655,15 @@
             const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
             scene.add(gridHelper);
             
-            // Группа для всего игрока
+            // Группа для всего игрока - точка вращения в основании
             playerGroup = new THREE.Group();
+            playerGroup.position.y = 0; // Основание тела на уровне пола
             scene.add(playerGroup);
+            
+            // Контейнер для тела - смещен вверх от точки вращения
+            bodyContainer = new THREE.Group();
+            bodyContainer.position.y = 1.5; // Центр тела находится на высоте 1.5 единиц от основания
+            playerGroup.add(bodyContainer);
             
             // Создание тела (параллелепипед)
             const bodyGeometry = new THREE.BoxGeometry(1.5, 3, 0.8);
@@ -437,13 +674,18 @@
                 wireframe: false
             });
             bodyCube = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            bodyCube.position.y = 1.5; // Центр тела
-            playerGroup.add(bodyCube);
+            // Тело уже находится в правильной позиции относительно контейнера
+            bodyContainer.add(bodyCube);
             
             // Добавление надписей на тело
             addLabelsToCube(bodyCube, 'body');
             
-            // Создание головы (куб) - ПРИПОДНЯТА ВЫШЕ
+            // Контейнер для головы (прикреплен к телу)
+            headContainer = new THREE.Group();
+            headContainer.position.y = 2.5; // Позиция головы относительно тела
+            bodyCube.add(headContainer); // Голова прикреплена к телу!
+            
+            // Создание головы (куб)
             const headGeometry = new THREE.BoxGeometry(1, 1, 1);
             const headMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0xFF5722,
@@ -452,23 +694,31 @@
                 wireframe: false
             });
             headCube = new THREE.Mesh(headGeometry, headMaterial);
-            // Голова приподнята выше для предотвращения пересечений
-            headCube.position.y = 4.0; // Было 3.5, теперь 4.0 (+0.5 для зазора)
-            playerGroup.add(headCube);
+            headContainer.add(headCube);
             
             // Добавление надписей на голову
             addLabelsToCube(headCube, 'head');
             
-            // Шея (соединительный цилиндр) - УДЛИНЕНА
-            const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.0, 8); // Увеличена длина с 0.5 до 1.0
+            // Шея (соединительный цилиндр)
+            const neckGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
             const neckMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
             const neck = new THREE.Mesh(neckGeometry, neckMaterial);
-            neck.position.y = 3.25; // Выше для соответствия новой высоте головы
-            playerGroup.add(neck);
+            neck.position.y = -0.25; // Позиция шеи относительно головы
+            headContainer.add(neck);
             
-            // Оси координат для отладки
+            // Визуализация точки вращения (красная точка в основании)
+            const rotationPointGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const rotationPointMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const rotationPoint = new THREE.Mesh(rotationPointGeometry, rotationPointMaterial);
+            rotationPoint.position.y = 0; // Точка вращения в основании
+            playerGroup.add(rotationPoint);
+            
+            // Оси координат для отладки (в точке вращения)
             const axesHelper = new THREE.AxesHelper(2);
             playerGroup.add(axesHelper);
+            
+            // Инициализация управления мышью
+            initMouseControls();
             
             // Анимация
             animate();
@@ -486,29 +736,37 @@
         
         function animate() {
             requestAnimationFrame(animate);
+            
+            // Автовращение камеры
+            if (cameraControls.autoRotate) {
+                cameraControls.cameraAngleX += cameraControls.autoRotateSpeed;
+                updateCameraPosition();
+            }
+            
             updatePlayerPosition();
             renderer.render(scene, camera);
         }
         
         function updatePlayerPosition() {
-            // ОБНОВЛЕННАЯ ЛОГИКА: Голова жестко прикреплена к телу
+            // Вращение происходит вокруг основания тела (playerGroup)
             
-            // Тело вращается по данным с датчика тела
-            playerGroup.rotation.x = THREE.MathUtils.degToRad(config.bodyData.pitch);
-            playerGroup.rotation.z = THREE.MathUtils.degToRad(config.bodyData.roll);
-            playerGroup.rotation.y = THREE.MathUtils.degToRad(config.bodyData.yaw);
+            // ТЕЛО: Глобальная ориентация + локальные наклоны
+            bodyController.setGlobalOrientation(config.bodyData.yaw);
+            bodyController.applyLocalTilt(config.bodyData.pitch, config.bodyData.roll);
             
-            // Голова получает ДОПОЛНИТЕЛЬНЫЕ повороты от датчика головы
-            // но относительно уже повернутого тела
-            headCube.rotation.x = THREE.MathUtils.degToRad(config.headData.pitch);
-            headCube.rotation.z = THREE.MathUtils.degToRad(config.headData.roll);
-            headCube.rotation.y = THREE.MathUtils.degToRad(config.headData.yaw);
+            // Применяем вращение ко всей группе игрока (вокруг основания)
+            playerGroup.setRotationFromQuaternion(bodyController.getQuaternion());
             
-            // Обновление отображения углов
-            updateDisplay();
+            // ГОЛОВА: Локальные повороты относительно тела
+            headController.setGlobalOrientation(config.headData.yaw);
+            headController.applyLocalTilt(config.headData.pitch, config.headData.roll);
+            headCube.setRotationFromQuaternion(headController.getQuaternion());
+            
+            // Обновление отладочной информации
+            updateDebugInfo();
         }
         
-        function updateDisplay() {
+        function updateDebugInfo() {
             document.getElementById('headPitch').textContent = config.headData.pitch.toFixed(1) + '°';
             document.getElementById('headRoll').textContent = config.headData.roll.toFixed(1) + '°';
             document.getElementById('headYaw').textContent = config.headData.yaw.toFixed(1) + '°';
@@ -516,6 +774,16 @@
             document.getElementById('bodyPitch').textContent = config.bodyData.pitch.toFixed(1) + '°';
             document.getElementById('bodyRoll').textContent = config.bodyData.roll.toFixed(1) + '°';
             document.getElementById('bodyYaw').textContent = config.bodyData.yaw.toFixed(1) + '°';
+            
+            // Отладочная информация
+            document.getElementById('headLocalAngles').textContent = 
+                `${config.headData.pitch.toFixed(1)}°, ${config.headData.roll.toFixed(1)}°, ${config.headData.yaw.toFixed(1)}°`;
+            
+            document.getElementById('bodyLocalAngles').textContent = 
+                `${config.bodyData.pitch.toFixed(1)}°, ${config.bodyData.roll.toFixed(1)}°, ${config.bodyData.yaw.toFixed(1)}°`;
+            
+            document.getElementById('bodyDirection').textContent = 
+                `${config.bodyData.yaw.toFixed(1)}°`;
         }
         
         // Функции подключения к датчикам
