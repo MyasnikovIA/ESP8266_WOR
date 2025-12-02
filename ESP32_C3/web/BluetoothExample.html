@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Bluetooth Web Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2196F3, #21CBF3);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1em;
+        }
+
+        .content {
+            padding: 25px;
+        }
+
+        .card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid;
+        }
+
+        .status-card {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        .data-card {
+            border-color: #4CAF50;
+            background: #e8f5e8;
+        }
+
+        .control-card {
+            border-color: #FF9800;
+            background: #fff3e0;
+        }
+
+        .terminal-card {
+            border-color: #9C27B0;
+            background: #f3e5f5;
+        }
+
+        .card-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .indicator {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .connected {
+            background: #4CAF50;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+
+        .disconnected {
+            background: #f44336;
+            box-shadow: 0 0 10px #f44336;
+        }
+
+        .terminal {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            padding: 15px;
+            border-radius: 8px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .terminal-line {
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: 'Courier New', monospace;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+
+        button {
+            background: linear-gradient(135deg, #2196F3, #21CBF3);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(33, 150, 243, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-send {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .quick-commands {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .instructions {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+
+        .instructions h3 {
+            color: #1976d2;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .instructions ul {
+            list-style: none;
+            color: #555;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .instructions li:before {
+            content: "•";
+            color: #2196F3;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+            }
+            
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .input-group {
+                flex-direction: column;
+            }
+            
+            .status-info {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .quick-commands {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 ESP32 Bluetooth Control</h1>
+            <p>Управление устройством ESP32 через Bluetooth Serial</p>
+        </div>
+
+        <div class="content">
+            <!-- Карта статуса -->
+            <div class="card status-card">
+                <div class="card-title">📊 Статус системы</div>
+                <div class="status-info">
+                    <div class="status-indicator">
+                        <div class="indicator disconnected" id="statusIndicator"></div>
+                        <span id="connectionStatus">Ожидание подключения Bluetooth</span>
+                    </div>
+                    <div id="deviceInfo">
+                        <strong>Устройство:</strong> MyESP32
+                    </div>
+                </div>
+            </div>
+
+            <!-- Терминал для данных -->
+            <div class="card terminal-card">
+                <div class="card-title">📟 Serial Terminal</div>
+                <div class="terminal" id="terminal">
+                    <div class="terminal-line">>> ESP32 Bluetooth Terminal Ready</div>
+                    <div class="terminal-line">>> Ожидание данных...</div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="commandInput" placeholder="Введите команду для отправки в ESP32..." onkeypress="handleKeyPress(event)">
+                    <button onclick="sendCommand()" class="btn-send">
+                        📤 Отправить
+                    </button>
+                </div>
+                <div class="btn-group">
+                    <button onclick="clearTerminal()" class="btn-clear">
+                        🗑️ Очистить терминал
+                    </button>
+                    <button onclick="simulateConnection()" class="btn-send">
+                        🔄 Имитация подключения
+                    </button>
+                </div>
+            </div>
+
+            <!-- Панель быстрых команд -->
+            <div class="card control-card">
+                <div class="card-title">🎮 Быстрые команды</div>
+                <div class="quick-commands">
+                    <button onclick="sendQuickCommand('LED_ON')" class="btn-send">💡 Включить светодиод</button>
+                    <button onclick="sendQuickCommand('LED_OFF')" class="btn-clear">🔅 Выключить светодиод</button>
+                    <button onclick="sendQuickCommand('STATUS')">📊 Получить статус</button>
+                    <button onclick="sendQuickCommand('HELLO')">👋 Приветствие</button>
+                    <button onclick="sendQuickCommand('TIME')">⏰ Запрос времени</button>
+                    <button onclick="sendQuickCommand('TEST')">🧪 Тестовая команда</button>
+                    <button onclick="sendQuickCommand('RESET')" class="btn-danger">🔄 Сброс</button>
+                    <button onclick="sendQuickCommand('HELP')">❓ Помощь</button>
+                </div>
+            </div>
+
+            <!-- Инструкции -->
+            <div class="instructions">
+                <h3>📋 Инструкция по использованию:</h3>
+                <ul>
+                    <li>Подключитесь к устройству "MyESP32" через Bluetooth на вашем телефоне/компьютере</li>
+                    <li>Используйте Serial Bluetooth Terminal приложение для обмена данными</li>
+                    <li>Команды отправляются в ESP32 и возвращаются с префиксом "ESP32: "</li>
+                    <li>Данные, полученные от ESP32, отображаются в терминале выше</li>
+                    <li>Для тестирования используйте кнопки быстрых команд или вводите свои команды</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class BluetoothTerminal {
+            constructor() {
+                this.terminal = document.getElementById('terminal');
+                this.commandInput = document.getElementById('commandInput');
+                this.statusIndicator = document.getElementById('statusIndicator');
+                this.connectionStatus = document.getElementById('connectionStatus');
+                this.isConnected = false;
+                this.messageCount = 0;
+                
+                this.init();
+            }
+            
+            init() {
+                this.addMessage('system', 'ESP32 Bluetooth Web Interface запущен');
+                this.addMessage('system', 'Имитация работы с устройством MyESP32');
+                this.simulateIncomingData();
+            }
+            
+            addMessage(type, message) {
+                const timestamp = new Date().toLocaleTimeString();
+                const messageElement = document.createElement('div');
+                messageElement.className = 'terminal-line';
+                
+                let prefix = '';
+                let style = '';
+                
+                switch(type) {
+                    case 'sent':
+                        prefix = '<< SENT:';
+                        style = 'color: #2196F3;';
+                        break;
+                    case 'received':
+                        prefix = '>> RECV:';
+                        style = 'color: #4CAF50;';
+                        break;
+                    case 'system':
+                        prefix = '## SYS:';
+                        style = 'color: #FF9800;';
+                        break;
+                    case 'error':
+                        prefix = '!! ERROR:';
+                        style = 'color: #f44336;';
+                        break;
+                }
+                
+                messageElement.innerHTML = `<span style="${style}">${prefix}</span> ${message} <span style="color: #888; font-size: 0.8em;">[${timestamp}]</span>`;
+                this.terminal.appendChild(messageElement);
+                this.terminal.scrollTop = this.terminal.scrollHeight;
+                
+                this.messageCount++;
+            }
+            
+            sendCommand(command) {
+                if (!command.trim()) return;
+                
+                // В реальном приложении здесь будет Web Bluetooth API
+                this.addMessage('sent', command);
+                this.commandInput.value = '';
+                
+                // Имитация ответа от ESP32
+                setTimeout(() => {
+                    this.simulateResponse(command);
+                }, 500 + Math.random() * 1000);
+            }
+            
+            simulateResponse(command) {
+                const responses = {
+                    'LED_ON': 'Светодиод включен',
+                    'LED_OFF': 'Светодиод выключен',
+                    'STATUS': 'Статус: OK, Температура: 25.3°C, Напряжение: 3.7V',
+                    'HELLO': 'Привет от ESP32!',
+                    'TIME': `Время ESP32: ${new Date().toLocaleTimeString()}`,
+                    'TEST': 'Тест пройден успешно',
+                    'RESET': 'Устройство перезагружается...',
+                    'HELP': 'Доступные команды: LED_ON, LED_OFF, STATUS, TIME, TEST, RESET'
+                };
+                
+                const response = responses[command] || `ESP32: Получена команда "${command}"`;
+                this.addMessage('received', response);
+            }
+            
+            simulateIncomingData() {
+                // Имитация случайных данных от ESP32
+                setInterval(() => {
+                    if (this.isConnected && Math.random() < 0.3) {
+                        const sensors = [
+                            `Температура: ${(20 + Math.random() * 10).toFixed(1)}°C`,
+                            `Влажность: ${(40 + Math.random() * 30).toFixed(1)}%`,
+                            `Аналоговый вход A0: ${Math.floor(Math.random() * 4095)}`,
+                            `Свободная память: ${Math.floor(100000 + Math.random() * 50000)} байт`,
+                            `Время работы: ${Math.floor(Math.random() * 100)} часов`,
+                            `Сигнал WiFi: ${Math.floor(20 + Math.random() * 80)}%`
+                        ];
+                        
+                        const randomData = sensors[Math.floor(Math.random() * sensors.length)];
+                        this.addMessage('received', randomData);
+                    }
+                }, 5000);
+            }
+            
+            setConnectionStatus(connected) {
+                this.isConnected = connected;
+                this.statusIndicator.className = `indicator ${connected ? 'connected' : 'disconnected'}`;
+                this.connectionStatus.textContent = connected ? 
+                    'Bluetooth подключен к MyESP32' : 
+                    'Bluetooth не подключен';
+                
+                this.addMessage('system', `Bluetooth ${connected ? 'подключен' : 'отключен'}`);
+            }
+            
+            clearTerminal() {
+                this.terminal.innerHTML = '';
+                this.addMessage('system', 'Терминал очищен');
+            }
+        }
+
+        // Инициализация терминала
+        const terminal = new BluetoothTerminal();
+
+        // Функции для кнопок
+        function sendCommand() {
+            const command = document.getElementById('commandInput').value.trim();
+            terminal.sendCommand(command);
+        }
+
+        function sendQuickCommand(command) {
+            terminal.sendCommand(command);
+        }
+
+        function clearTerminal() {
+            terminal.clearTerminal();
+        }
+
+        function simulateConnection() {
+            terminal.setConnectionStatus(true);
+            setTimeout(() => {
+                terminal.addMessage('received', 'Добро пожаловать в систему ESP32!');
+            }, 1000);
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendCommand();
+            }
+        }
+
+        // Автоматическое "подключение" через 3 секунды
+        setTimeout(() => {
+            terminal.setConnectionStatus(true);
+            terminal.addMessage('received', 'ESP32 Bluetooth готов к работе!');
+        }, 3000);
+    </script>
+</body>
+</html>

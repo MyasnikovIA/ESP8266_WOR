@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Head Tracker - Bluetooth MPU6050</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+
+        .visualization-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .section-title {
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            color: #feca57;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 3D Visualization */
+        .cube-container {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+            perspective: 1200px;
+        }
+
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+
+        .face {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+            color: white;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(5px);
+        }
+
+        .front { transform: rotateY(0deg) translateZ(200px); background: rgba(52, 152, 219, 0.7); }
+        .back { transform: rotateY(180deg) translateZ(200px); background: rgba(155, 89, 182, 0.7); }
+        .right { transform: rotateY(90deg) translateZ(200px); background: rgba(46, 204, 113, 0.7); }
+        .left { transform: rotateY(-90deg) translateZ(200px); background: rgba(231, 76, 60, 0.7); }
+        .top { transform: rotateX(90deg) translateZ(200px); background: rgba(241, 196, 15, 0.7); }
+        .bottom { transform: rotateX(-90deg) translateZ(200px); background: rgba(230, 126, 34, 0.7); }
+
+        /* Data Display */
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .data-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #3498db;
+        }
+
+        .data-item.relative {
+            border-left-color: #2ecc71;
+        }
+
+        .data-item.accumulated {
+            border-left-color: #f39c12;
+        }
+
+        .data-label {
+            font-size: 0.9em;
+            color: #bdc3c7;
+            margin-bottom: 8px;
+        }
+
+        .data-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Controls */
+        .connection-status {
+            background: rgba(231, 76, 60, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #e74c3c;
+            text-align: center;
+        }
+
+        .connection-status.connected {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: #2ecc71;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .quick-commands {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        button {
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-connect {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-disconnect {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+        }
+
+        /* Terminal */
+        .terminal {
+            background: #1e1e1e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .terminal-line {
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .terminal-line.sent {
+            color: #3498db;
+        }
+
+        .terminal-line.received {
+            color: #2ecc71;
+        }
+
+        .terminal-line.system {
+            color: #f39c12;
+        }
+
+        .terminal-line.error {
+            color: #e74c3c;
+        }
+
+        /* Zero Status */
+        .zero-status {
+            background: rgba(243, 156, 18, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            border: 2px solid #f39c12;
+        }
+
+        .zero-status.active {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: #2ecc71;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+            
+            .cube-container {
+                width: 300px;
+                height: 300px;
+            }
+            
+            .face {
+                width: 300px;
+                height: 300px;
+                font-size: 22px;
+            }
+            
+            .front, .back, .right, .left, .top, .bottom {
+                transform-origin: center;
+            }
+            
+            .front { transform: rotateY(0deg) translateZ(150px); }
+            .back { transform: rotateY(180deg) translateZ(150px); }
+            .right { transform: rotateY(90deg) translateZ(150px); }
+            .left { transform: rotateY(-90deg) translateZ(150px); }
+            .top { transform: rotateX(90deg) translateZ(150px); }
+            .bottom { transform: rotateX(-90deg) translateZ(150px); }
+        }
+
+        @media (max-width: 768px) {
+            .data-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .control-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 VR Head Tracker - Bluetooth MPU6050</h1>
+            <p>Режим реального времени с датчиком ориентации</p>
+        </div>
+
+        <div class="content">
+            <!-- Левая колонка - визуализация -->
+            <div class="visualization-section">
+                <div class="section-title">
+                    🎯 3D Визуализация положения
+                </div>
+                
+                <div class="cube-container">
+                    <div class="cube" id="cube">
+                        <div class="face front">ПЕРЕД</div>
+                        <div class="face back">ЗАД</div>
+                        <div class="face right">ПРАВО</div>
+                        <div class="face left">ЛЕВО</div>
+                        <div class="face top">ВЕРХ</div>
+                        <div class="face bottom">НИЗ</div>
+                    </div>
+                </div>
+
+                <div class="data-grid">
+                    <!-- Основные углы -->
+                    <div class="data-item">
+                        <div class="data-label">Pitch (Тангаж)</div>
+                        <div class="data-value" id="pitch">0.0°</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Roll (Крен)</div>
+                        <div class="data-value" id="roll">0.0°</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Yaw (Рыскание)</div>
+                        <div class="data-value" id="yaw">0.0°</div>
+                    </div>
+                    
+                    <!-- Относительные углы -->
+                    <div class="data-item relative">
+                        <div class="data-label">Относительный Pitch</div>
+                        <div class="data-value" id="relPitch">0.0°</div>
+                    </div>
+                    <div class="data-item relative">
+                        <div class="data-label">Относительный Roll</div>
+                        <div class="data-value" id="relRoll">0.0°</div>
+                    </div>
+                    <div class="data-item relative">
+                        <div class="data-label">Относительный Yaw</div>
+                        <div class="data-value" id="relYaw">0.0°</div>
+                    </div>
+                    
+                    <!-- Накопленные углы -->
+                    <div class="data-item accumulated">
+                        <div class="data-label">Накопленный Pitch</div>
+                        <div class="data-value" id="accPitch">0.0°</div>
+                    </div>
+                    <div class="data-item accumulated">
+                        <div class="data-label">Накопленный Roll</div>
+                        <div class="data-value" id="accRoll">0.0°</div>
+                    </div>
+                    <div class="data-item accumulated">
+                        <div class="data-label">Накопленный Yaw</div>
+                        <div class="data-value" id="accYaw">0.0°</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка - управление -->
+            <div class="controls-section">
+                <div class="section-title">
+                    ⚙️ Управление подключением
+                </div>
+
+                <div class="connection-status" id="connectionStatus">
+                    🔴 Bluetooth не подключен
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn-connect" onclick="connectBluetooth()">
+                        📱 Подключить Bluetooth
+                    </button>
+                    <button class="btn-disconnect" onclick="disconnectBluetooth()">
+                        🔌 Отключить
+                    </button>
+                </div>
+
+                <div class="zero-status" id="zeroStatus">
+                    ⚠️ Нулевая точка не установлена
+                </div>
+
+                <div class="section-title">
+                    🎮 Команды управления
+                </div>
+
+                <div class="quick-commands">
+                    <button class="btn-primary" onclick="sendCommand('GET_DATA')">
+                        📊 Получить данные
+                    </button>
+                    <button class="btn-warning" onclick="sendCommand('RECALIBRATE')">
+                        🎯 Перекалибровать
+                    </button>
+                    <button class="btn-info" onclick="sendCommand('SET_ZERO')">
+                        🎯 Установить ноль
+                    </button>
+                    <button class="btn-danger" onclick="sendCommand('RESET_ZERO')">
+                        🔄 Сбросить ноль
+                    </button>
+                    <button class="btn-warning" onclick="sendCommand('RESET_ANGLES')">
+                        🗑️ Сбросить углы
+                    </button>
+                    <button class="btn-info" onclick="sendCommand('STATUS')">
+                        ℹ️ Статус системы
+                    </button>
+                    <button class="btn-primary" onclick="sendCommand('HELP')">
+                        ❓ Помощь
+                    </button>
+                </div>
+
+                <div class="section-title" style="margin-top: 25px;">
+                    📟 Терминал команд
+                </div>
+
+                <div class="terminal" id="terminal">
+                    <div class="terminal-line system">>> Система готова к работе</div>
+                    <div class="terminal-line system">>> Подключитесь к устройству VR_Head_BT</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class BluetoothManager {
+            constructor() {
+                this.device = null;
+                this.server = null;
+                this.service = null;
+                this.characteristic = null;
+                this.isConnected = false;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 3;
+                
+                this.cube = document.getElementById('cube');
+                this.terminal = document.getElementById('terminal');
+                this.connectionStatus = document.getElementById('connectionStatus');
+                this.zeroStatus = document.getElementById('zeroStatus');
+                
+                this.autoReconnect = true;
+            }
+            
+            async connect() {
+                try {
+                    this.addTerminalMessage('system', 'Поиск Bluetooth устройств...');
+                    
+                    // Используем Serial Port Profile (SPP) для Bluetooth Serial
+                    this.device = await navigator.bluetooth.requestDevice({
+                        filters: [
+                            { name: 'VR_Head_BT' }
+                        ],
+                        optionalServices: ['generic_access', 'serial']
+                    });
+                    
+                    this.addTerminalMessage('system', `Устройство найдено: ${this.device.name}`);
+                    
+                    this.device.addEventListener('gattserverdisconnected', () => {
+                        this.handleDisconnection();
+                    });
+                    
+                    this.server = await this.device.gatt.connect();
+                    this.addTerminalMessage('system', 'Подключение к GATT серверу...');
+                    
+                    // Пробуем разные сервисы для Serial communication
+                    const services = await this.server.getPrimaryServices();
+                    this.addTerminalMessage('system', `Найдено сервисов: ${services.length}`);
+                    
+                    let serialServiceFound = false;
+                    
+                    for (const service of services) {
+                        this.addTerminalMessage('system', `Сервис: ${service.uuid}`);
+                        
+                        // Ищем характеристики для чтения/записи
+                        const characteristics = await service.getCharacteristics();
+                        
+                        for (const char of characteristics) {
+                            if (char.properties.notify || char.properties.indicate) {
+                                // Это характеристика для получения данных
+                                this.characteristic = char;
+                                this.service = service;
+                                serialServiceFound = true;
+                                
+                                await this.characteristic.startNotifications();
+                                this.characteristic.addEventListener('characteristicvaluechanged', 
+                                    (event) => this.handleDataReceived(event));
+                                
+                                this.addTerminalMessage('system', `Найдена характеристика для уведомлений: ${char.uuid}`);
+                                break;
+                            }
+                        }
+                        
+                        if (serialServiceFound) break;
+                    }
+                    
+                    if (!serialServiceFound) {
+                        throw new Error('Не найдена подходящая характеристика для Serial communication');
+                    }
+                    
+                    this.isConnected = true;
+                    this.reconnectAttempts = 0;
+                    this.updateConnectionStatus();
+                    this.addTerminalMessage('system', '✅ Bluetooth подключен! Ожидание данных...');
+                    
+                    // Запрашиваем начальные данные
+                    setTimeout(() => this.sendData('GET_DATA'), 1000);
+                    
+                } catch (error) {
+                    this.addTerminalMessage('error', `Ошибка подключения: ${error.message}`);
+                    this.isConnected = false;
+                    this.updateConnectionStatus();
+                    this.startSerialCommunication();
+                }
+            }
+            
+            // Альтернативный метод через Web Serial API (более надежный для Serial)
+            async startSerialCommunication() {
+                if (!navigator.serial) {
+                    this.addTerminalMessage('error', 'Web Serial API не поддерживается. Используйте Chrome/Edge.');
+                    this.startDemoMode();
+                    return;
+                }
+                
+                try {
+                    this.addTerminalMessage('system', 'Попытка подключения через Web Serial API...');
+                    
+                    const port = await navigator.serial.requestPort();
+                    await port.open({ baudRate: 115200 });
+                    
+                    this.addTerminalMessage('system', 'Web Serial подключен!');
+                    
+                    const reader = port.readable.getReader();
+                    const writer = port.writable.getWriter();
+                    
+                    this.isConnected = true;
+                    this.updateConnectionStatus();
+                    
+                    // Чтение данных
+                    this.readSerialData(reader);
+                    
+                    // Сохраняем writer для отправки команд
+                    this.serialWriter = writer;
+                    
+                } catch (error) {
+                    this.addTerminalMessage('error', `Web Serial ошибка: ${error.message}`);
+                    this.startDemoMode();
+                }
+            }
+            
+            async readSerialData(reader) {
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            reader.releaseLock();
+                            break;
+                        }
+                        
+                        if (value) {
+                            const text = new TextDecoder().decode(value);
+                            this.addTerminalMessage('received', text);
+                            this.processSensorData(text);
+                        }
+                    }
+                } catch (error) {
+                    this.addTerminalMessage('error', `Ошибка чтения: ${error.message}`);
+                }
+            }
+            
+            disconnect() {
+                this.autoReconnect = false;
+                if (this.device && this.device.gatt.connected) {
+                    this.device.gatt.disconnect();
+                }
+                this.handleDisconnection();
+            }
+            
+            handleDisconnection() {
+                this.isConnected = false;
+                this.device = null;
+                this.server = null;
+                this.service = null;
+                this.characteristic = null;
+                this.updateConnectionStatus();
+                this.addTerminalMessage('system', '🔌 Bluetooth отключен');
+                
+                if (this.autoReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    setTimeout(() => {
+                        this.addTerminalMessage('system', `Попытка переподключения ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`);
+                        this.connect();
+                    }, 2000);
+                }
+            }
+            
+            handleDataReceived(event) {
+                const value = event.target.value;
+                const textDecoder = new TextDecoder();
+                const data = textDecoder.decode(value);
+                
+                this.addTerminalMessage('received', data);
+                this.processSensorData(data);
+            }
+            
+            async sendData(data) {
+                if (!this.isConnected) {
+                    this.addTerminalMessage('error', 'Нет подключения для отправки данных');
+                    return;
+                }
+                
+                try {
+                    if (this.serialWriter) {
+                        // Web Serial API
+                        const encoder = new TextEncoder();
+                        const dataBuffer = encoder.encode(data + '\n');
+                        await this.serialWriter.write(dataBuffer);
+                    } else if (this.service && this.characteristic) {
+                        // Web Bluetooth API - ищем характеристику для записи
+                        const characteristics = await this.service.getCharacteristics();
+                        let writeChar = null;
+                        
+                        for (const char of characteristics) {
+                            if (char.properties.write || char.properties.writeWithoutResponse) {
+                                writeChar = char;
+                                break;
+                            }
+                        }
+                        
+                        if (writeChar) {
+                            const textEncoder = new TextEncoder();
+                            const buffer = textEncoder.encode(data + '\n');
+                            await writeChar.writeValue(buffer);
+                        } else {
+                            throw new Error('Не найдена характеристика для записи');
+                        }
+                    }
+                    
+                    this.addTerminalMessage('sent', data);
+                } catch (error) {
+                    this.addTerminalMessage('error', `Ошибка отправки: ${error.message}`);
+                }
+            }
+            
+            processSensorData(data) {
+                // Обрабатываем несколько строк, если они пришли вместе
+                const lines = data.split('\n');
+                
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    
+                    if (line.includes('PITCH:') && line.includes('ROLL:') && line.includes('YAW:')) {
+                        this.parseSensorData(line);
+                    } else if (line.includes('ZERO_SET')) {
+                        this.zeroStatus.innerHTML = '✅ Нулевая точка установлена';
+                        this.zeroStatus.className = 'zero-status active';
+                        this.showNotification('Нулевая точка установлена', 'success');
+                    } else if (line.includes('ZERO_RESET')) {
+                        this.zeroStatus.innerHTML = '⚠️ Нулевая точка не установлена';
+                        this.zeroStatus.className = 'zero-status';
+                        this.showNotification('Нулевая точка сброшена', 'info');
+                    } else if (line.includes('SYSTEM_READY')) {
+                        this.addTerminalMessage('system', '✅ Система готова к работе');
+                    } else if (line.includes('RECALIBRATION_COMPLETE')) {
+                        this.addTerminalMessage('system', '✅ Калибровка завершена');
+                        this.showNotification('Калибровка завершена', 'success');
+                    } else if (line.includes('ANGLES_RESET')) {
+                        this.addTerminalMessage('system', '✅ Углы сброшены');
+                        this.showNotification('Углы сброшены', 'info');
+                    } else if (line.includes('ZERO_POINT_SET')) {
+                        this.zeroStatus.innerHTML = '✅ Нулевая точка установлена';
+                        this.zeroStatus.className = 'zero-status active';
+                        this.showNotification('Нулевая точка установлена', 'success');
+                    } else if (line.includes('ZERO_POINT_RESET')) {
+                        this.zeroStatus.innerHTML = '⚠️ Нулевая точка не установлена';
+                        this.zeroStatus.className = 'zero-status';
+                        this.showNotification('Нулевая точка сброшена', 'info');
+                    } else if (line.includes('ERROR:')) {
+                        this.addTerminalMessage('error', line);
+                        this.showNotification(line.replace('ERROR:', ''), 'error');
+                    } else if (line.includes('HELP:')) {
+                        this.addTerminalMessage('system', line.replace('HELP:', ''));
+                    } else if (line.includes('STATUS:')) {
+                        this.addTerminalMessage('system', line.replace('STATUS:', ''));
+                    }
+                }
+            }
+            
+            parseSensorData(data) {
+                try {
+                    const pitchMatch = data.match(/PITCH:([-\d.]+)/);
+                    const rollMatch = data.match(/ROLL:([-\d.]+)/);
+                    const yawMatch = data.match(/YAW:([-\d.]+)/);
+                    const relPitchMatch = data.match(/REL_PITCH:([-\d.]+)/);
+                    const relRollMatch = data.match(/REL_ROLL:([-\d.]+)/);
+                    const relYawMatch = data.match(/REL_YAW:([-\d.]+)/);
+                    const accPitchMatch = data.match(/ACC_PITCH:([-\d.]+)/);
+                    const accRollMatch = data.match(/ACC_ROLL:([-\d.]+)/);
+                    const accYawMatch = data.match(/ACC_YAW:([-\d.]+)/);
+                    const zeroSetMatch = data.match(/ZERO_SET:(true|false)/);
+                    
+                    if (pitchMatch && rollMatch && yawMatch) {
+                        const pitch = parseFloat(pitchMatch[1]);
+                        const roll = parseFloat(rollMatch[1]);
+                        const yaw = parseFloat(yawMatch[1]);
+                        
+                        // Обновление значений на экране
+                        document.getElementById('pitch').textContent = pitch.toFixed(1) + '°';
+                        document.getElementById('roll').textContent = roll.toFixed(1) + '°';
+                        document.getElementById('yaw').textContent = yaw.toFixed(1) + '°';
+                        
+                        // Обновление 3D визуализации
+                        this.update3DVisualization(pitch, roll, yaw);
+                    }
+                    
+                    if (relPitchMatch) {
+                        document.getElementById('relPitch').textContent = parseFloat(relPitchMatch[1]).toFixed(1) + '°';
+                    }
+                    if (relRollMatch) {
+                        document.getElementById('relRoll').textContent = parseFloat(relRollMatch[1]).toFixed(1) + '°';
+                    }
+                    if (relYawMatch) {
+                        document.getElementById('relYaw').textContent = parseFloat(relYawMatch[1]).toFixed(1) + '°';
+                    }
+                    if (accPitchMatch) {
+                        document.getElementById('accPitch').textContent = parseFloat(accPitchMatch[1]).toFixed(1) + '°';
+                    }
+                    if (accRollMatch) {
+                        document.getElementById('accRoll').textContent = parseFloat(accRollMatch[1]).toFixed(1) + '°';
+                    }
+                    if (accYawMatch) {
+                        document.getElementById('accYaw').textContent = parseFloat(accYawMatch[1]).toFixed(1) + '°';
+                    }
+                    
+                    if (zeroSetMatch) {
+                        const zeroSet = zeroSetMatch[1] === 'true';
+                        this.zeroStatus.innerHTML = zeroSet ? '✅ Нулевая точка установлена' : '⚠️ Нулевая точка не установлена';
+                        this.zeroStatus.className = zeroSet ? 'zero-status active' : 'zero-status';
+                    }
+                    
+                } catch (error) {
+                    this.addTerminalMessage('error', `Ошибка парсинга данных: ${error.message}`);
+                }
+            }
+            
+            update3DVisualization(pitch, roll, yaw) {
+                // Применяем вращение к 3D кубу
+                this.cube.style.transform = 
+                    `rotateX(${roll}deg) rotateY(${yaw}deg) rotateZ(${pitch}deg)`;
+            }
+            
+            addTerminalMessage(type, message) {
+                const line = document.createElement('div');
+                line.className = `terminal-line ${type}`;
+                
+                const timestamp = new Date().toLocaleTimeString();
+                line.textContent = `[${timestamp}] ${message}`;
+                
+                this.terminal.appendChild(line);
+                this.terminal.scrollTop = this.terminal.scrollHeight;
+                
+                // Ограничиваем количество строк в терминале
+                const lines = this.terminal.getElementsByClassName('terminal-line');
+                if (lines.length > 50) {
+                    this.terminal.removeChild(lines[0]);
+                }
+            }
+            
+            updateConnectionStatus() {
+                if (this.isConnected) {
+                    this.connectionStatus.textContent = '✅ Bluetooth подключен к VR_Head_BT';
+                    this.connectionStatus.className = 'connection-status connected';
+                } else {
+                    this.connectionStatus.textContent = '🔴 Bluetooth не подключен';
+                    this.connectionStatus.className = 'connection-status';
+                }
+            }
+            
+            showNotification(message, type = 'info') {
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.textContent = message;
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    color: white;
+                    font-weight: bold;
+                    z-index: 1000;
+                    background: ${type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : '#3498db'};
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    border-left: 5px solid ${type === 'success' ? '#2ecc71' : type === 'error' ? '#c0392b' : '#2980b9'};
+                `;
+                
+                document.body.appendChild(notification);
+                
+                // Remove after 3 seconds
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 3000);
+            }
+            
+            startDemoMode() {
+                this.addTerminalMessage('system', '🚨 Запуск демо-режима');
+                this.isConnected = true;
+                this.updateConnectionStatus();
+                
+                // Демо-данные для тестирования
+                let demoPitch = 0, demoRoll = 0, demoYaw = 0;
+                
+                setInterval(() => {
+                    demoPitch += (Math.random() - 0.5) * 5;
+                    demoRoll += (Math.random() - 0.5) * 5;
+                    demoYaw += (Math.random() - 0.5) * 5;
+                    
+                    // Ограничиваем углы
+                    demoPitch = Math.max(-180, Math.min(180, demoPitch));
+                    demoRoll = Math.max(-180, Math.min(180, demoRoll));
+                    demoYaw = Math.max(-180, Math.min(180, demoYaw));
+                    
+                    // Обновляем визуализацию
+                    document.getElementById('pitch').textContent = demoPitch.toFixed(1) + '°';
+                    document.getElementById('roll').textContent = demoRoll.toFixed(1) + '°';
+                    document.getElementById('yaw').textContent = demoYaw.toFixed(1) + '°';
+                    
+                    this.update3DVisualization(demoPitch, demoRoll, demoYaw);
+                    
+                }, 20);
+            }
+        }
+
+        // Глобальный объект Bluetooth менеджера
+        const bluetoothManager = new BluetoothManager();
+
+        // Функции для кнопок
+        async function connectBluetooth() {
+            if (!navigator.bluetooth && !navigator.serial) {
+                alert('Ваш браузер не поддерживает Web Bluetooth API или Web Serial API. Используйте Chrome или Edge.');
+                return;
+            }
+            
+            bluetoothManager.autoReconnect = true;
+            await bluetoothManager.connect();
+        }
+
+        function disconnectBluetooth() {
+            bluetoothManager.disconnect();
+        }
+
+        function sendCommand(command) {
+            if (bluetoothManager.isConnected) {
+                bluetoothManager.sendData(command);
+            } else {
+                alert('Сначала подключитесь к Bluetooth устройству');
+            }
+        }
+
+        // Автоматическая попытка подключения при загрузке
+        window.addEventListener('load', function() {
+            if (!navigator.bluetooth && !navigator.serial) {
+                bluetoothManager.addTerminalMessage('error', 
+                    'Web Bluetooth API и Web Serial API не поддерживаются. Используйте Chrome или Edge для полной функциональности.');
+                bluetoothManager.startDemoMode();
+            } else {
+                // Автоподключение при загрузке страницы
+                setTimeout(() => {
+                    bluetoothManager.addTerminalMessage('system', 'Автоматическое подключение...');
+                    connectBluetooth();
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>

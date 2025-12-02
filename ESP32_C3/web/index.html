@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Head Tracker - Bluetooth MPU6050</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+
+        .visualization-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .controls-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .section-title {
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            color: #feca57;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 3D Visualization */
+        .cube-container {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+            perspective: 1200px;
+        }
+
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+
+        .face {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+            color: white;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(5px);
+        }
+
+        .front { transform: rotateY(0deg) translateZ(200px); background: rgba(52, 152, 219, 0.7); }
+        .back { transform: rotateY(180deg) translateZ(200px); background: rgba(155, 89, 182, 0.7); }
+        .right { transform: rotateY(90deg) translateZ(200px); background: rgba(46, 204, 113, 0.7); }
+        .left { transform: rotateY(-90deg) translateZ(200px); background: rgba(231, 76, 60, 0.7); }
+        .top { transform: rotateX(90deg) translateZ(200px); background: rgba(241, 196, 15, 0.7); }
+        .bottom { transform: rotateX(-90deg) translateZ(200px); background: rgba(230, 126, 34, 0.7); }
+
+        /* Data Display */
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .data-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #3498db;
+        }
+
+        .data-item.relative {
+            border-left-color: #2ecc71;
+        }
+
+        .data-item.accumulated {
+            border-left-color: #f39c12;
+        }
+
+        .data-label {
+            font-size: 0.9em;
+            color: #bdc3c7;
+            margin-bottom: 8px;
+        }
+
+        .data-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Controls */
+        .connection-status {
+            background: rgba(231, 76, 60, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #e74c3c;
+            text-align: center;
+        }
+
+        .connection-status.connected {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: #2ecc71;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .quick-commands {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        button {
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-connect {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-disconnect {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+        }
+
+        /* Terminal */
+        .terminal {
+            background: #1e1e1e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .terminal-line {
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .terminal-line.sent {
+            color: #3498db;
+        }
+
+        .terminal-line.received {
+            color: #2ecc71;
+        }
+
+        .terminal-line.system {
+            color: #f39c12;
+        }
+
+        .terminal-line.error {
+            color: #e74c3c;
+        }
+
+        /* Zero Status */
+        .zero-status {
+            background: rgba(243, 156, 18, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            border: 2px solid #f39c12;
+        }
+
+        .zero-status.active {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: #2ecc71;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+            
+            .cube-container {
+                width: 300px;
+                height: 300px;
+            }
+            
+            .face {
+                width: 300px;
+                height: 300px;
+                font-size: 22px;
+            }
+            
+            .front, .back, .right, .left, .top, .bottom {
+                transform-origin: center;
+            }
+            
+            .front { transform: rotateY(0deg) translateZ(150px); }
+            .back { transform: rotateY(180deg) translateZ(150px); }
+            .right { transform: rotateY(90deg) translateZ(150px); }
+            .left { transform: rotateY(-90deg) translateZ(150px); }
+            .top { transform: rotateX(90deg) translateZ(150px); }
+            .bottom { transform: rotateX(-90deg) translateZ(150px); }
+        }
+
+        @media (max-width: 768px) {
+            .data-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .control-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 VR Head Tracker - Bluetooth MPU6050</h1>
+            <p>Режим реального времени с датчиком ориентации</p>
+        </div>
+
+        <div class="content">
+            <!-- Левая колонка - визуализация -->
+            <div class="visualization-section">
+                <div class="section-title">
+                    🎯 3D Визуализация положения
+                </div>
+                
+                <div class="cube-container">
+                    <div class="cube" id="cube">
+                        <div class="face front">ПЕРЕД</div>
+                        <div class="face back">ЗАД</div>
+                        <div class="face right">ПРАВО</div>
+                        <div class="face left">ЛЕВО</div>
+                        <div class="face top">ВЕРХ</div>
+                        <div class="face bottom">НИЗ</div>
+                    </div>
+                </div>
+
+                <div class="data-grid">
+                    <!-- Основные углы -->
+                    <div class="data-item">
+                        <div class="data-label">Pitch (Тангаж)</div>
+                        <div class="data-value" id="pitch">0.0°</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Roll (Крен)</div>
+                        <div class="data-value" id="roll">0.0°</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Yaw (Рыскание)</div>
+                        <div class="data-value" id="yaw">0.0°</div>
+                    </div>
+                    
+                    <!-- Относительные углы -->
+                    <div class="data-item relative">
+                        <div class="data-label">Относительный Pitch</div>
+                        <div class="data-value" id="relPitch">0.0°</div>
+                    </div>
+                    <div class="data-item relative">
+                        <div class="data-label">Относительный Roll</div>
+                        <div class="data-value" id="relRoll">0.0°</div>
+                    </div>
+                    <div class="data-item relative">
+                        <div class="data-label">Относительный Yaw</div>
+                        <div class="data-value" id="relYaw">0.0°</div>
+                    </div>
+                    
+                    <!-- Накопленные углы -->
+                    <div class="data-item accumulated">
+                        <div class="data-label">Накопленный Pitch</div>
+                        <div class="data-value" id="accPitch">0.0°</div>
+                    </div>
+                    <div class="data-item accumulated">
+                        <div class="data-label">Накопленный Roll</div>
+                        <div class="data-value" id="accRoll">0.0°</div>
+                    </div>
+                    <div class="data-item accumulated">
+                        <div class="data-label">Накопленный Yaw</div>
+                        <div class="data-value" id="accYaw">0.0°</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка - управление -->
+            <div class="controls-section">
+                <div class="section-title">
+                    ⚙️ Управление подключением
+                </div>
+
+                <div class="connection-status" id="connectionStatus">
+                    🔴 Bluetooth не подключен
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn-connect" onclick="connectBluetooth()">
+                        📱 Подключить Bluetooth
+                    </button>
+                    <button class="btn-disconnect" onclick="disconnectBluetooth()">
+                        🔌 Отключить
+                    </button>
+                </div>
+
+                <div class="zero-status" id="zeroStatus">
+                    ⚠️ Нулевая точка не установлена
+                </div>
+
+                <div class="section-title">
+                    🎮 Команды управления
+                </div>
+
+                <div class="quick-commands">
+                    <button class="btn-primary" onclick="sendCommand('GET_DATA')">
+                        📊 Получить данные
+                    </button>
+                    <button class="btn-warning" onclick="sendCommand('RECALIBRATE')">
+                        🎯 Перекалибровать
+                    </button>
+                    <button class="btn-info" onclick="sendCommand('SET_ZERO')">
+                        🎯 Установить ноль
+                    </button>
+                    <button class="btn-danger" onclick="sendCommand('RESET_ZERO')">
+                        🔄 Сбросить ноль
+                    </button>
+                    <button class="btn-warning" onclick="sendCommand('RESET_ANGLES')">
+                        🗑️ Сбросить углы
+                    </button>
+                    <button class="btn-info" onclick="sendCommand('STATUS')">
+                        ℹ️ Статус системы
+                    </button>
+                    <button class="btn-primary" onclick="sendCommand('HELP')">
+                        ❓ Помощь
+                    </button>
+                </div>
+
+                <div class="section-title" style="margin-top: 25px;">
+                    📟 Терминал команд
+                </div>
+
+                <div class="terminal" id="terminal">
+                    <div class="terminal-line system">>> Система готова к работе</div>
+                    <div class="terminal-line system">>> Подключитесь к устройству VR_Head_BT</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    class SerialManager {
+        constructor() {
+            this.port = null;
+            this.reader = null;
+            this.writer = null;
+            this.isConnected = false;
+            this.isReading = false;
+            
+            this.cube = document.getElementById('cube');
+            this.terminal = document.getElementById('terminal');
+            this.connectionStatus = document.getElementById('connectionStatus');
+            this.zeroStatus = document.getElementById('zeroStatus');
+        }
+        
+        async connect() {
+            try {
+                if (!navigator.serial) {
+                    throw new Error('Web Serial API не поддерживается. Используйте Chrome/Edge 89+.');
+                }
+                
+                this.addTerminalMessage('system', '🔄 Запрос доступа к Serial порту...');
+                
+                // Запрашиваем порт
+                this.port = await navigator.serial.requestPort();
+                
+                this.addTerminalMessage('system', '📡 Подключение к устройству...');
+                
+                // Открываем порт с настройками как в скетче Arduino
+                await this.port.open({
+                    baudRate: 115200,
+                    dataBits: 8,
+                    stopBits: 1,
+                    parity: 'none',
+                    flowControl: 'none'
+                });
+                
+                this.isConnected = true;
+                this.updateConnectionStatus();
+                this.addTerminalMessage('system', '✅ Подключено! Ожидание данных...');
+                
+                // Запускаем чтение данных
+                this.startReading();
+                
+                // Запрашиваем начальные данные
+                setTimeout(() => this.sendCommand('GET_DATA'), 500);
+                
+            } catch (error) {
+                this.addTerminalMessage('error', `Ошибка подключения: ${error.message}`);
+                this.isConnected = false;
+                this.updateConnectionStatus();
+                
+                if (error.name === 'NotFoundError') {
+                    this.addTerminalMessage('system', 'Устройство не выбрано. Попробуйте снова.');
+                }
+            }
+        }
+        
+        async startReading() {
+            if (!this.port || !this.isConnected) return;
+            
+            try {
+                this.isReading = true;
+                
+                while (this.port.readable && this.isReading) {
+                    this.reader = this.port.readable.getReader();
+                    
+                    try {
+                        while (true) {
+                            const { value, done } = await this.reader.read();
+                            
+                            if (done) {
+                                break;
+                            }
+                            
+                            if (value) {
+                                this.processReceivedData(value);
+                            }
+                        }
+                    } catch (error) {
+                        this.addTerminalMessage('error', `Ошибка чтения: ${error.message}`);
+                    } finally {
+                        this.reader.releaseLock();
+                    }
+                }
+            } catch (error) {
+                this.addTerminalMessage('error', `Ошибка в цикле чтения: ${error.message}`);
+            }
+        }
+        
+        processReceivedData(data) {
+            // Преобразуем Uint8Array в строку
+            const text = new TextDecoder().decode(data);
+            
+            // Разделяем на строки и обрабатываем каждую
+            const lines = text.split('\n');
+            
+            for (let line of lines) {
+                line = line.trim();
+                if (line === '') continue;
+                
+                this.addTerminalMessage('received', line);
+                this.parseSensorData(line);
+            }
+        }
+        
+        async sendCommand(command) {
+            if (!this.isConnected || !this.port) {
+                this.addTerminalMessage('error', 'Нет подключения для отправки команды');
+                return;
+            }
+            
+            try {
+                this.writer = this.port.writable.getWriter();
+                const encoder = new TextEncoder();
+                
+                // Отправляем команду с переводом строки (как ожидает Arduino)
+                const data = encoder.encode(command + '\n');
+                await this.writer.write(data);
+                
+                this.addTerminalMessage('sent', command);
+                
+            } catch (error) {
+                this.addTerminalMessage('error', `Ошибка отправки: ${error.message}`);
+            } finally {
+                if (this.writer) {
+                    this.writer.releaseLock();
+                    this.writer = null;
+                }
+            }
+        }
+        
+        async disconnect() {
+            this.isReading = false;
+            
+            if (this.reader) {
+                try {
+                    await this.reader.cancel();
+                } catch (error) {
+                    console.log('Ошибка при отмене чтения:', error);
+                }
+                this.reader = null;
+            }
+            
+            if (this.writer) {
+                try {
+                    this.writer.releaseLock();
+                } catch (error) {
+                    console.log('Ошибка при освобождении writer:', error);
+                }
+                this.writer = null;
+            }
+            
+            if (this.port) {
+                try {
+                    await this.port.close();
+                } catch (error) {
+                    console.log('Ошибка при закрытии порта:', error);
+                }
+                this.port = null;
+            }
+            
+            this.isConnected = false;
+            this.updateConnectionStatus();
+            this.addTerminalMessage('system', '🔌 Отключено от устройства');
+        }
+        
+        parseSensorData(data) {
+            try {
+                // Обрабатываем различные типы данных от Arduino
+                
+                if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
+                    // Данные сенсора
+                    const pitchMatch = data.match(/PITCH:([-\d.]+)/);
+                    const rollMatch = data.match(/ROLL:([-\d.]+)/);
+                    const yawMatch = data.match(/YAW:([-\d.]+)/);
+                    const relPitchMatch = data.match(/REL_PITCH:([-\d.]+)/);
+                    const relRollMatch = data.match(/REL_ROLL:([-\d.]+)/);
+                    const relYawMatch = data.match(/REL_YAW:([-\d.]+)/);
+                    const accPitchMatch = data.match(/ACC_PITCH:([-\d.]+)/);
+                    const accRollMatch = data.match(/ACC_ROLL:([-\d.]+)/);
+                    const accYawMatch = data.match(/ACC_YAW:([-\d.]+)/);
+                    const zeroSetMatch = data.match(/ZERO_SET:(true|false)/);
+                    
+                    if (pitchMatch && rollMatch && yawMatch) {
+                        const pitch = parseFloat(pitchMatch[1]);
+                        const roll = parseFloat(rollMatch[1]);
+                        const yaw = parseFloat(yawMatch[1]);
+                        
+                        // Обновление значений на экране
+                        document.getElementById('pitch').textContent = pitch.toFixed(1) + '°';
+                        document.getElementById('roll').textContent = roll.toFixed(1) + '°';
+                        document.getElementById('yaw').textContent = yaw.toFixed(1) + '°';
+                        
+                        // Обновление 3D визуализации
+                        this.update3DVisualization(pitch, roll, yaw);
+                    }
+                    
+                    // Обновляем относительные углы
+                    if (relPitchMatch) {
+                        document.getElementById('relPitch').textContent = parseFloat(relPitchMatch[1]).toFixed(2) + '°';
+                    }
+                    if (relRollMatch) {
+                        document.getElementById('relRoll').textContent = parseFloat(relRollMatch[1]).toFixed(2) + '°';
+                    }
+                    if (relYawMatch) {
+                        document.getElementById('relYaw').textContent = parseFloat(relYawMatch[1]).toFixed(2) + '°';
+                    }
+                    
+                    // Обновляем накопленные углы
+                    if (accPitchMatch) {
+                        document.getElementById('accPitch').textContent = parseFloat(accPitchMatch[1]).toFixed(2) + '°';
+                    }
+                    if (accRollMatch) {
+                        document.getElementById('accRoll').textContent = parseFloat(accRollMatch[1]).toFixed(2) + '°';
+                    }
+                    if (accYawMatch) {
+                        document.getElementById('accYaw').textContent = parseFloat(accYawMatch[1]).toFixed(2) + '°';
+                    }
+                    
+                    // Обновляем статус нулевой точки
+                    if (zeroSetMatch) {
+                        const zeroSet = zeroSetMatch[1] === 'true';
+                        this.zeroStatus.innerHTML = zeroSet ? 
+                            '✅ Нулевая точка установлена' : '⚠️ Нулевая точка не установлена';
+                        this.zeroStatus.className = zeroSet ? 'zero-status active' : 'zero-status';
+                    }
+                    
+                } else if (data.includes('ZERO_SET')) {
+                    this.zeroStatus.innerHTML = '✅ Нулевая точка установлена';
+                    this.zeroStatus.className = 'zero-status active';
+                    this.showNotification('Нулевая точка установлена', 'success');
+                    
+                } else if (data.includes('ZERO_RESET')) {
+                    this.zeroStatus.innerHTML = '⚠️ Нулевая точка не установлена';
+                    this.zeroStatus.className = 'zero-status';
+                    this.showNotification('Нулевая точка сброшена', 'info');
+                    
+                } else if (data.includes('SYSTEM_READY')) {
+                    this.addTerminalMessage('system', '✅ Система готова к работе');
+                    this.showNotification('Система готова', 'success');
+                    
+                } else if (data.includes('RECALIBRATION_COMPLETE')) {
+                    this.addTerminalMessage('system', '✅ Калибровка завершена');
+                    this.showNotification('Калибровка завершена', 'success');
+                    
+                } else if (data.includes('ANGLES_RESET')) {
+                    this.addTerminalMessage('system', '✅ Углы сброшены');
+                    this.showNotification('Углы сброшены', 'info');
+                    
+                } else if (data.includes('ERROR:')) {
+                    this.addTerminalMessage('error', data);
+                    this.showNotification(data.replace('ERROR:', 'Ошибка:'), 'error');
+                    
+                } else if (data.includes('STATUS:')) {
+                    this.addTerminalMessage('system', data.replace('STATUS:', 'Статус:'));
+                }
+                
+            } catch (error) {
+                this.addTerminalMessage('error', `Ошибка обработки данных: ${error.message}`);
+            }
+        }
+        
+        update3DVisualization(pitch, roll, yaw) {
+            // Применяем вращение к 3D кубу
+            // Порядок вращения важен для правильного отображения
+            this.cube.style.transform = 
+                `rotateX(${-roll}deg) rotateY(${-yaw}deg) rotateZ(${pitch}deg)`;
+        }
+        
+        addTerminalMessage(type, message) {
+            const line = document.createElement('div');
+            line.className = `terminal-line ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            line.textContent = `[${timestamp}] ${message}`;
+            
+            this.terminal.appendChild(line);
+            this.terminal.scrollTop = this.terminal.scrollHeight;
+            
+            // Ограничиваем количество строк в терминале
+            const lines = this.terminal.getElementsByClassName('terminal-line');
+            if (lines.length > 100) {
+                this.terminal.removeChild(lines[0]);
+            }
+        }
+        
+        updateConnectionStatus() {
+            if (this.isConnected) {
+                this.connectionStatus.textContent = '✅ Подключено к VR_Head_BT';
+                this.connectionStatus.className = 'connection-status connected';
+            } else {
+                this.connectionStatus.textContent = '🔴 Не подключено';
+                this.connectionStatus.className = 'connection-status';
+            }
+        }
+        
+        showNotification(message, type = 'info') {
+            // Создаем элемент уведомления
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: bold;
+                z-index: 1000;
+                background: ${type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : '#3498db'};
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                border-left: 5px solid ${type === 'success' ? '#2ecc71' : type === 'error' ? '#c0392b' : '#2980b9'};
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Удаляем через 3 секунды
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
+        }
+    }
+
+    // Глобальный объект Serial менеджера
+    const serialManager = new SerialManager();
+
+    // Функции для кнопок
+    async function connectBluetooth() {
+        await serialManager.connect();
+    }
+
+    async function disconnectBluetooth() {
+        await serialManager.disconnect();
+    }
+
+    function sendCommand(command) {
+        if (serialManager.isConnected) {
+            serialManager.sendCommand(command);
+        } else {
+            alert('Сначала подключитесь к устройству');
+        }
+    }
+
+    // Проверка поддержки Web Serial API при загрузке
+    window.addEventListener('load', function() {
+        if (!navigator.serial) {
+            serialManager.addTerminalMessage('error', 
+                'Web Serial API не поддерживается. Используйте Chrome 89+ или Edge 89+ для подключения к устройству.');
+            serialManager.addTerminalMessage('system', 
+                'Режим демонстрации будет автоматически активирован через 5 секунд...');
+            
+            setTimeout(() => {
+                startDemoMode();
+            }, 5000);
+        } else {
+            serialManager.addTerminalMessage('system', 
+                '✅ Web Serial API поддерживается. Нажмите "Подключить Bluetooth" для начала работы.');
+        }
+    });
+
+    // Функция демо-режима (на случай отсутствия поддержки Web Serial)
+    function startDemoMode() {
+        const demoManager = new SerialManager();
+        demoManager.addTerminalMessage('system', '🚨 Запуск демо-режима');
+        demoManager.isConnected = true;
+        demoManager.updateConnectionStatus();
+        
+        let demoPitch = 0, demoRoll = 0, demoYaw = 0;
+        
+        // Имитация получения данных
+        setInterval(() => {
+            demoPitch += (Math.random() - 0.5) * 2;
+            demoRoll += (Math.random() - 0.5) * 2;
+            demoYaw += (Math.random() - 0.5) * 3;
+            
+            // Ограничиваем углы
+            demoPitch = Math.max(-180, Math.min(180, demoPitch));
+            demoRoll = Math.max(-180, Math.min(180, demoRoll));
+            demoYaw = Math.max(-180, Math.min(180, demoYaw));
+            
+            // Обновляем визуализацию
+            document.getElementById('pitch').textContent = demoPitch.toFixed(1) + '°';
+            document.getElementById('roll').textContent = demoRoll.toFixed(1) + '°';
+            document.getElementById('yaw').textContent = demoYaw.toFixed(1) + '°';
+            
+            demoManager.update3DVisualization(demoPitch, demoRoll, demoYaw);
+            
+        }, 100);
+    }
+</script>
+</body>
+</html>

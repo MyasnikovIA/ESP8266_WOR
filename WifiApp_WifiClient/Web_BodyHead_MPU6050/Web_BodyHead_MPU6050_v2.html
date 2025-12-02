@@ -200,7 +200,7 @@
         }
 
         .left-arm-color {
-            background: #9C27B0;
+            background: #FF6B35;
         }
 
         .notification {
@@ -307,6 +307,26 @@
             gap: 10px;
             margin-top: 15px;
         }
+
+        .mode-selector {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .mode-btn {
+            padding: 8px 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            background: transparent;
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .mode-btn.active {
+            background: rgba(255,255,255,0.2);
+            border-color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -398,7 +418,7 @@
             </div>
 
             <div class="panel">
-                <h2>Датчик на левой руке</h2>
+                <h2>Датчик на левой руке (плечевая кость)</h2>
                 <div class="status-container">
                     <div class="status-item">
                         <div>Статус</div>
@@ -426,12 +446,21 @@
                         <span class="data-label">Относительные углы:</span>
                         <span class="data-value" id="leftArmRelativeAngles">0°, 0°, 0°</span>
                     </div>
+                    <div class="data-row">
+                        <span class="data-label">Режим работы:</span>
+                        <span class="data-value" id="leftArmMode">Относительный</span>
+                    </div>
+                </div>
+                <div class="mode-selector">
+                    <button class="mode-btn active" onclick="setLeftArmMode('relative')">Относительные углы</button>
+                    <button class="mode-btn" onclick="setLeftArmMode('absolute')">Абсолютные углы</button>
                 </div>
                 <div class="controls">
-                    <button onclick="connectLeftArm()">Подключить руку</button>
+                    <button onclick="connectLeftArm()">Подключить плечевую кость</button>
                     <button class="btn-success" onclick="sendLeftArmCommand('setZero')">Установить ноль</button>
                     <button class="btn-warning" onclick="sendLeftArmCommand('recalibrate')">Калибровать</button>
                     <button class="btn-info" onclick="sendLeftArmCommand('resetAngles')">Сбросить углы</button>
+                    <button class="btn-info" onclick="sendLeftArmCommand('resetYaw')">Сбросить Yaw</button>
                 </div>
             </div>
         </div>
@@ -448,7 +477,7 @@
                     <input type="text" id="bodyIp" placeholder="192.168.5.102">
                 </div>
                 <div class="ip-input-group">
-                    <label for="leftArmIp">Левая рука:</label>
+                    <label for="leftArmIp">Плечевая кость:</label>
                     <input type="text" id="leftArmIp" placeholder="192.168.5.104">
                 </div>
                 <div class="config-buttons">
@@ -471,7 +500,7 @@
                 <button class="btn-info" onclick="toggleAutoRotate()" id="autoRotateBtn">Автовращение: Выкл</button>
                 <button class="btn-info" onclick="focusOnHead()">Фокус на голову</button>
                 <button class="btn-info" onclick="focusOnBody()">Фокус на тело</button>
-                <button class="btn-info" onclick="focusOnLeftArm()">Фокус на левую руку</button>
+                <button class="btn-info" onclick="focusOnLeftArm()">Фокус на плечевую кость</button>
             </div>
             <div class="legend">
                 <div class="legend-item">
@@ -484,12 +513,12 @@
                 </div>
                 <div class="legend-item">
                     <div class="legend-color left-arm-color"></div>
-                    <div>Плечевая кость (прикреплена к левой плоскости тела)</div>
+                    <div>Плечевая кость (отслеживание движений руки)</div>
                 </div>
             </div>
             <div class="info-panel">
                 <p><strong>Вращение от основания:</strong> Тело вращается вокруг точки в основании (ноги), а не вокруг центра</p>
-                <p><strong>Прикрепление плечевой кости:</strong> Плечевая кость прикреплена к левой плоскости тела и вращается вместе с ним</p>
+                <p><strong>Плечевая кость:</strong> Датчик закреплен на середине плечевой кости для отслеживания движений руки</p>
                 <p><strong>Управление камерой:</strong> 
                     <span class="help-text">ЛКМ + движение - вращение вокруг модели | Колесико - приближение/отдаление</span>
                 </p>
@@ -505,7 +534,7 @@
         const defaultConfig = {
             headSensorUrl: "http://192.168.5.101",
             bodySensorUrl: "http://192.168.5.102", 
-            leftArmSensorUrl: "http://192.168.5.104"
+            leftArmSensorUrl: "http://192.168.5.104"  // Теперь это датчик плечевой кости
         };
 
         // Загрузка конфигурации из localStorage
@@ -544,7 +573,8 @@
             leftArmData: { 
                 pitch: 0, roll: 0, yaw: 0,
                 relPitch: 0, relRoll: 0, relYaw: 0,
-                calibrated: false, zeroSet: false
+                calibrated: false, zeroSet: false,
+                mode: 'relative'  // Режим работы плечевой кости
             }
         };
 
@@ -602,7 +632,7 @@
             }
         }
 
-        // Контроллеры для головы, тела и левой руки
+        // Контроллеры для головы, тела и плечевой кости
         const bodyController = new OrientationController();
         const headController = new OrientationController();
         const leftArmController = new OrientationController();
@@ -715,7 +745,7 @@
             cube.add(rightText);
             labels.push(rightText);
             
-            // Верхняя грань (только для головы и руки)
+            // Верхняя грань (только для головы и плечевой кости)
             if (cubeType === 'head' || cubeType === 'leftArm') {
                 const topText = createTextSprite('ВЕРХ', 0xFFFFFF);
                 topText.position.set(0, size, 0);
@@ -837,13 +867,13 @@
             showNotification("Фокус на тело", "info");
         }
 
-        // Фокус на левую руку
+        // Фокус на плечевую кость
         function focusOnLeftArm() {
             cameraControls.cameraDistance = 6;
             cameraControls.cameraAngleX = -30;
             cameraControls.cameraAngleY = 15;
             updateCameraPosition();
-            showNotification("Фокус на левую руку", "info");
+            showNotification("Фокус на плечевую кость", "info");
         }
 
         // Инициализация 3D сцены
@@ -924,39 +954,45 @@
             neck.position.y = -0.25;
             headContainer.add(neck);
             
-            // КОНТЕЙНЕР ДЛЯ ЛЕВОЙ ПЛЕЧЕВОЙ КОСТИ - ПРИКРЕПЛЕН К ЛЕВОЙ ПЛОСКОСТИ ТЕЛА
+            // КОНТЕЙНЕР ДЛЯ ПЛЕЧЕВОЙ КОСТИ - ПРИКРЕПЛЕН К ЛЕВОЙ ПЛОСКОСТИ ТЕЛА
             leftArmContainer = new THREE.Group();
             
             // Позиционируем контейнер плечевой кости на ЛЕВОЙ плоскости тела
-            // Левая плоскость тела находится на отрицательной X-координате
-            leftArmContainer.position.set(-0.75, 1.5, 0); // Смещение к левой поверхности тела
+            leftArmContainer.position.set(-0.75, 2.0, 0); // Выше на теле для плечевой кости
             
             // Добавляем контейнер к телу
             bodyCube.add(leftArmContainer);
             
-            // Создание левой плечевой кости (цилиндр)
-            const leftArmGeometry = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 8);
+            // Создание плечевой кости (цилиндр) - более длинная и тонкая
+            const leftArmGeometry = new THREE.CylinderGeometry(0.08, 0.08, 1.2, 8);
             const leftArmMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0x9C27B0,
+                color: 0xFF6B35,
                 transparent: true,
-                opacity: 0.8,
+                opacity: 0.9,
                 wireframe: false
             });
             leftArmCube = new THREE.Mesh(leftArmGeometry, leftArmMaterial);
             
             // Поворачиваем цилиндр так, чтобы он был направлен от тела
             leftArmCube.rotation.z = Math.PI / 2; // Горизонтально
-            leftArmCube.position.x = -0.75; // Смещаем от точки крепления (длина кости 1.5, половина = 0.75)
+            leftArmCube.position.x = -0.6; // Смещаем от точки крепления (длина кости 1.2, половина = 0.6)
             
             leftArmContainer.add(leftArmCube);
             addLabelsToCube(leftArmCube, 'leftArm');
             
             // Плечевой сустав (сфера) - точка вращения
-            const shoulderGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-            const shoulderMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF });
+            const shoulderGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const shoulderMaterial = new THREE.MeshPhongMaterial({ color: 0xFFD166 });
             const shoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
             // Сустав находится в начале координат контейнера leftArmContainer
             leftArmContainer.add(shoulder);
+            
+            // Локтевой сустав (сфера)
+            const elbowGeometry = new THREE.SphereGeometry(0.12, 8, 8);
+            const elbowMaterial = new THREE.MeshPhongMaterial({ color: 0xFFD166 });
+            const elbow = new THREE.Mesh(elbowGeometry, elbowMaterial);
+            elbow.position.x = -1.2; // На конце плечевой кости
+            leftArmCube.add(elbow);
             
             // Визуализация точки вращения (красная точка в основании)
             const rotationPointGeometry = new THREE.SphereGeometry(0.1, 8, 8);
@@ -1011,10 +1047,14 @@
             headController.applyLocalTilt(config.headData.pitch, config.headData.roll);
             headCube.setRotationFromQuaternion(headController.getQuaternion());
             
-            // ЛЕВАЯ ПЛЕЧЕВАЯ КОСТЬ: Локальные повороты относительно тела
-            // Плечевая кость прикреплена к левой плоскости тела и вращается вместе с ним
-            leftArmController.setGlobalOrientation(config.leftArmData.yaw);
-            leftArmController.applyLocalTilt(config.leftArmData.pitch, config.leftArmData.roll);
+            // ПЛЕЧЕВАЯ КОСТЬ: Локальные повороты относительно тела
+            // Используем правильные углы в зависимости от режима
+            const pitch = config.leftArmData.mode === 'relative' ? config.leftArmData.relPitch : config.leftArmData.pitch;
+            const roll = config.leftArmData.mode === 'relative' ? config.leftArmData.relRoll : config.leftArmData.roll;
+            const yaw = config.leftArmData.mode === 'relative' ? config.leftArmData.relYaw : config.leftArmData.yaw;
+            
+            leftArmController.setGlobalOrientation(yaw);
+            leftArmController.applyLocalTilt(pitch, roll);
             leftArmContainer.setRotationFromQuaternion(leftArmController.getQuaternion());
             
             // Обновление отладочной информации
@@ -1031,9 +1071,14 @@
             document.getElementById('bodyRoll').textContent = config.bodyData.roll.toFixed(1) + '°';
             document.getElementById('bodyYaw').textContent = config.bodyData.yaw.toFixed(1) + '°';
             
-            document.getElementById('leftArmPitch').textContent = config.leftArmData.pitch.toFixed(1) + '°';
-            document.getElementById('leftArmRoll').textContent = config.leftArmData.roll.toFixed(1) + '°';
-            document.getElementById('leftArmYaw').textContent = config.leftArmData.yaw.toFixed(1) + '°';
+            // Для плечевой кости используем правильные углы в зависимости от режима
+            const leftArmPitch = config.leftArmData.mode === 'relative' ? config.leftArmData.relPitch : config.leftArmData.pitch;
+            const leftArmRoll = config.leftArmData.mode === 'relative' ? config.leftArmData.relRoll : config.leftArmData.roll;
+            const leftArmYaw = config.leftArmData.mode === 'relative' ? config.leftArmData.relYaw : config.leftArmData.yaw;
+            
+            document.getElementById('leftArmPitch').textContent = leftArmPitch.toFixed(1) + '°';
+            document.getElementById('leftArmRoll').textContent = leftArmRoll.toFixed(1) + '°';
+            document.getElementById('leftArmYaw').textContent = leftArmYaw.toFixed(1) + '°';
             
             // Обновление отладочной информации
             document.getElementById('headAbsoluteAngles').textContent = 
@@ -1052,6 +1097,7 @@
                 `${config.leftArmData.relPitch.toFixed(1)}°, ${config.leftArmData.relRoll.toFixed(1)}°, ${config.leftArmData.relYaw.toFixed(1)}°`;
             
             document.getElementById('bodyDirection').textContent = `${config.bodyData.yaw.toFixed(1)}°`;
+            document.getElementById('leftArmMode').textContent = config.leftArmData.mode === 'relative' ? 'Относительный' : 'Абсолютный';
         }
 
         // Функции подключения к датчикам
@@ -1087,7 +1133,7 @@
 
         function connectLeftArm() {
             if (config.leftArmWebSocket && config.leftArmWebSocket.readyState === WebSocket.OPEN) {
-                showNotification("Уже подключено к датчику левой руки", "info");
+                showNotification("Уже подключено к датчику плечевой кости", "info");
                 return;
             }
             
@@ -1096,13 +1142,13 @@
                 config.leftArmWebSocket = new WebSocket(`ws://${ip}:81`);
                 setupWebSocketHandlers(config.leftArmWebSocket, 'leftArm');
             } catch (error) {
-                showNotification("Ошибка подключения к датчику левой руки", "error");
+                showNotification("Ошибка подключения к датчику плечевой кости", "error");
             }
         }
 
         function setupWebSocketHandlers(websocket, sensorType) {
             const statusElement = document.getElementById(sensorType + 'Status');
-            const statusText = sensorType === 'head' ? 'голове' : sensorType === 'body' ? 'теле' : 'левой руке';
+            const statusText = sensorType === 'head' ? 'голове' : sensorType === 'body' ? 'теле' : 'плечевой кости';
             
             websocket.onopen = function() {
                 config[sensorType + 'Connected'] = true;
@@ -1142,8 +1188,19 @@
                         config[sensorType + 'Data'].relYaw = jsonData.relYaw || 0;
                         config[sensorType + 'Data'].calibrated = jsonData.calibrated || false;
                         config[sensorType + 'Data'].zeroSet = jsonData.zeroSet || false;
+                        
+                        // Для плечевой кости обрабатываем специальные поля
+                        if (sensorType === 'leftArm' && jsonData.armMode) {
+                            config.leftArmData.mode = jsonData.armMode;
+                            updateLeftArmModeButtons();
+                        }
                     } else if (jsonData.type === 'status') {
                         showNotification(jsonData.message, "info");
+                    } else if (jsonData.type === 'armMode') {
+                        if (sensorType === 'leftArm') {
+                            config.leftArmData.mode = jsonData.mode;
+                            updateLeftArmModeButtons();
+                        }
                     }
                     return; // Успешно обработали JSON, выходим
                 } catch (jsonError) {
@@ -1200,7 +1257,7 @@
         }
 
         function sendLeftArmCommand(command) {
-            sendCommand(config.leftArmWebSocket, command, 'левой руки');
+            sendCommand(config.leftArmWebSocket, command, 'плечевой кости');
         }
 
         function sendCommand(websocket, command, sensorName) {
@@ -1211,6 +1268,26 @@
             } else {
                 showNotification(`Нет подключения к датчику ${sensorName}`, "error");
             }
+        }
+
+        function setLeftArmMode(mode) {
+            if (config.leftArmWebSocket && config.leftArmWebSocket.readyState === WebSocket.OPEN) {
+                config.leftArmWebSocket.send(JSON.stringify({ type: 'setArmMode', mode: mode }));
+                config.leftArmData.mode = mode;
+                updateLeftArmModeButtons();
+                showNotification(`Режим плечевой кости установлен: ${mode === 'relative' ? 'Относительный' : 'Абсолютный'}`, "success");
+            } else {
+                showNotification("Нет подключения к датчику плечевой кости", "error");
+            }
+        }
+
+        function updateLeftArmModeButtons() {
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const activeMode = config.leftArmData.mode || 'relative';
+            document.querySelector(`.mode-btn[onclick="setLeftArmMode('${activeMode}')"]`).classList.add('active');
+            document.getElementById('leftArmMode').textContent = activeMode === 'relative' ? 'Относительный' : 'Абсолютный';
         }
 
         function showNotification(message, type) {
@@ -1231,6 +1308,7 @@
             document.getElementById('leftArmIp').value = config.leftArmSensorUrl.replace('http://', '');
             
             initScene();
+            updateLeftArmModeButtons();
             
             // Автоподключение
             setTimeout(() => {

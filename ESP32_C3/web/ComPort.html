@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Bluetooth Communication</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+        }
+
+        .panel h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        select, input, button {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        button {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #2980b9, #3498db);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+        }
+
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #c0392b, #e74c3c);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #229954);
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #229954, #27ae60);
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.scanning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .terminal {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .terminal-line {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+
+        .terminal-line.incoming {
+            color: #3498db;
+        }
+
+        .terminal-line.outgoing {
+            color: #e74c3c;
+        }
+
+        .terminal-line.system {
+            color: #f39c12;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .quick-commands {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .quick-commands button {
+            padding: 10px;
+            font-size: 12px;
+        }
+
+        .connection-info {
+            background: #e8f4fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+
+        .connection-info div {
+            margin-bottom: 5px;
+        }
+
+        .clear-btn {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .clear-btn:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ESP32 Bluetooth Communication</h1>
+            <p>Управление устройством VR_head_222 через COM-порт</p>
+        </div>
+
+        <div class="content">
+            <!-- Левая панель - Управление подключением -->
+            <div class="panel">
+                <h2>Управление подключением</h2>
+                
+                <div id="status" class="status disconnected">
+                    Не подключено
+                </div>
+
+                <div class="form-group">
+                    <label for="portSelect">COM Порт:</label>
+                    <select id="portSelect">
+                        <option value="">-- Выберите порт --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="baudRate">Скорость (Baud Rate):</label>
+                    <select id="baudRate">
+                        <option value="9600">9600</option>
+                        <option value="19200">19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200" selected>115200</option>
+                    </select>
+                </div>
+
+                <div class="button-group">
+                    <button id="scanBtn" class="btn-success">
+                        🔍 Сканировать порты
+                    </button>
+                    <button id="connectBtn" disabled>
+                        📡 Подключиться
+                    </button>
+                </div>
+
+                <div class="button-group">
+                    <button id="disconnectBtn" disabled class="btn-danger">
+                        🔌 Отключиться
+                    </button>
+                    <button id="clearBtn" class="clear-btn">
+                        🧹 Очистить лог
+                    </button>
+                </div>
+
+                <div class="connection-info" id="connectionInfo" style="display: none;">
+                    <div><strong>Подключено к:</strong> <span id="connectedPort">-</span></div>
+                    <div><strong>Скорость:</strong> <span id="connectedBaud">-</span></div>
+                    <div><strong>Статус:</strong> <span id="connectionStatus">-</span></div>
+                </div>
+            </div>
+
+            <!-- Правая панель - Обмен данными -->
+            <div class="panel">
+                <h2>Обмен данными</h2>
+                
+                <div class="form-group">
+                    <label for="messageInput">Сообщение для отправки:</label>
+                    <input type="text" id="messageInput" placeholder="Введите сообщение..." disabled>
+                </div>
+
+                <button id="sendBtn" disabled>
+                    📤 Отправить сообщение
+                </button>
+
+                <div class="quick-commands">
+                    <button class="quick-command" data-command="AT">AT</button>
+                    <button class="quick-command" data-command="HELLO">HELLO</button>
+                    <button class="quick-command" data-command="STATUS">STATUS</button>
+                    <button class="quick-command" data-command="TEST">TEST</button>
+                    <button class="quick-command" data-command="RESET">RESET</button>
+                </div>
+
+                <div class="form-group" style="margin-top: 25px;">
+                    <label>Терминал:</label>
+                    <div class="terminal" id="terminal">
+                        <div class="terminal-line system">Готов к работе...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SerialCommunicator {
+            constructor() {
+                this.port = null;
+                this.reader = null;
+                this.writer = null;
+                this.isConnected = false;
+                this.keepReading = false;
+            }
+
+            async getPorts() {
+                try {
+                    const ports = await navigator.serial.getPorts();
+                    return ports;
+                } catch (error) {
+                    this.log(`Ошибка получения портов: ${error.message}`, 'system');
+                    return [];
+                }
+            }
+
+            async requestPort() {
+                try {
+                    const port = await navigator.serial.requestPort();
+                    return port;
+                } catch (error) {
+                    this.log('Пользователь отменил выбор порта', 'system');
+                    return null;
+                }
+            }
+
+            async connect(port, baudRate = 115200) {
+                try {
+                    await port.open({ baudRate: parseInt(baudRate) });
+                    
+                    this.port = port;
+                    this.writer = port.writable.getWriter();
+                    this.isConnected = true;
+                    this.keepReading = true;
+
+                    // Запускаем чтение в фоновом режиме
+                    this.startReading();
+
+                    this.log(`Подключено к ${port.getInfo().usbProductId || 'устройству'} на скорости ${baudRate}`, 'system');
+                    return true;
+                } catch (error) {
+                    this.log(`Ошибка подключения: ${error.message}`, 'system');
+                    return false;
+                }
+            }
+
+            async startReading() {
+                try {
+                    while (this.port.readable && this.keepReading) {
+                        this.reader = this.port.readable.getReader();
+                        
+                        try {
+                            while (true) {
+                                const { value, done } = await this.reader.read();
+                                if (done) break;
+                                
+                                const text = new TextDecoder().decode(value);
+                                this.log(text, 'incoming');
+                            }
+                        } catch (error) {
+                            this.log(`Ошибка чтения: ${error.message}`, 'system');
+                        } finally {
+                            this.reader.releaseLock();
+                        }
+                    }
+                } catch (error) {
+                    this.log(`Ошибка в процессе чтения: ${error.message}`, 'system');
+                }
+            }
+
+            async send(data) {
+                if (!this.writer || !this.isConnected) {
+                    this.log('Нет подключения для отправки данных', 'system');
+                    return false;
+                }
+
+                try {
+                    const encoder = new TextEncoder();
+                    const dataArray = encoder.encode(data + '\n');
+                    await this.writer.write(dataArray);
+                    this.log(data, 'outgoing');
+                    return true;
+                } catch (error) {
+                    this.log(`Ошибка отправки: ${error.message}`, 'system');
+                    return false;
+                }
+            }
+
+            async disconnect() {
+                this.keepReading = false;
+                
+                if (this.reader) {
+                    try {
+                        await this.reader.cancel();
+                    } catch (error) {
+                        console.error('Error canceling reader:', error);
+                    }
+                }
+
+                if (this.writer) {
+                    try {
+                        await this.writer.close();
+                    } catch (error) {
+                        console.error('Error closing writer:', error);
+                    }
+                }
+
+                if (this.port) {
+                    try {
+                        await this.port.close();
+                    } catch (error) {
+                        console.error('Error closing port:', error);
+                    }
+                }
+
+                this.port = null;
+                this.reader = null;
+                this.writer = null;
+                this.isConnected = false;
+
+                this.log('Отключено от устройства', 'system');
+            }
+
+            log(message, type = 'system') {
+                const terminal = document.getElementById('terminal');
+                const line = document.createElement('div');
+                line.className = `terminal-line ${type}`;
+                
+                const timestamp = new Date().toLocaleTimeString();
+                line.textContent = `[${timestamp}] ${message}`;
+                
+                terminal.appendChild(line);
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        }
+
+        // Инициализация приложения
+        class App {
+            constructor() {
+                this.serial = new SerialCommunicator();
+                this.initializeEventListeners();
+                this.updateUI();
+            }
+
+            initializeEventListeners() {
+                // Кнопка сканирования портов
+                document.getElementById('scanBtn').addEventListener('click', () => this.scanPorts());
+                
+                // Кнопка подключения
+                document.getElementById('connectBtn').addEventListener('click', () => this.connect());
+                
+                // Кнопка отключения
+                document.getElementById('disconnectBtn').addEventListener('click', () => this.disconnect());
+                
+                // Кнопка отправки сообщения
+                document.getElementById('sendBtn').addEventListener('click', () => this.sendMessage());
+                
+                // Кнопка очистки лога
+                document.getElementById('clearBtn').addEventListener('click', () => this.clearTerminal());
+                
+                // Быстрые команды
+                document.querySelectorAll('.quick-command').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const command = e.target.dataset.command;
+                        document.getElementById('messageInput').value = command;
+                        this.sendMessage();
+                    });
+                });
+
+                // Отправка по Enter
+                document.getElementById('messageInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+            }
+
+            async scanPorts() {
+                this.serial.log('Сканирование портов...', 'system');
+                
+                let ports = await this.serial.getPorts();
+                
+                if (ports.length === 0) {
+                    this.serial.log('Порты не найдены. Попробуйте выбрать порт вручную.', 'system');
+                    const port = await this.serial.requestPort();
+                    if (port) {
+                        ports = [port];
+                    }
+                }
+
+                const portSelect = document.getElementById('portSelect');
+                portSelect.innerHTML = '<option value="">-- Выберите порт --</option>';
+                
+                ports.forEach(port => {
+                    const option = document.createElement('option');
+                    const info = port.getInfo();
+                    option.value = info.usbProductId || 'custom';
+                    option.textContent = `COM Port (${info.usbProductId || 'Custom Device'})`;
+                    option.port = port;
+                    portSelect.appendChild(option);
+                });
+
+                if (ports.length > 0) {
+                    document.getElementById('connectBtn').disabled = false;
+                }
+            }
+
+            async connect() {
+                const portSelect = document.getElementById('portSelect');
+                const selectedOption = portSelect.options[portSelect.selectedIndex];
+                
+                if (!selectedOption.port) {
+                    this.serial.log('Пожалуйста, выберите порт', 'system');
+                    return;
+                }
+
+                const baudRate = document.getElementById('baudRate').value;
+                
+                this.updateStatus('scanning', 'Подключение...');
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('scanBtn').disabled = true;
+
+                const success = await this.serial.connect(selectedOption.port, baudRate);
+                
+                if (success) {
+                    this.updateStatus('connected', 'Подключено');
+                    this.updateConnectionInfo(selectedOption.textContent, baudRate);
+                    
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('messageInput').disabled = false;
+                    document.getElementById('scanBtn').disabled = true;
+                } else {
+                    this.updateStatus('disconnected', 'Ошибка подключения');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('scanBtn').disabled = false;
+                }
+            }
+
+            async disconnect() {
+                this.updateStatus('scanning', 'Отключение...');
+                
+                await this.serial.disconnect();
+                
+                this.updateStatus('disconnected', 'Не подключено');
+                this.updateUI();
+            }
+
+            async sendMessage() {
+                const messageInput = document.getElementById('messageInput');
+                const message = messageInput.value.trim();
+                
+                if (!message) {
+                    this.serial.log('Введите сообщение для отправки', 'system');
+                    return;
+                }
+
+                if (!this.serial.isConnected) {
+                    this.serial.log('Нет подключения к устройству', 'system');
+                    return;
+                }
+
+                const success = await this.serial.send(message);
+                if (success) {
+                    messageInput.value = '';
+                    messageInput.focus();
+                }
+            }
+
+            clearTerminal() {
+                document.getElementById('terminal').innerHTML = 
+                    '<div class="terminal-line system">Лог очищен</div>';
+            }
+
+            updateStatus(status, message) {
+                const statusElement = document.getElementById('status');
+                statusElement.className = `status ${status}`;
+                statusElement.textContent = message;
+            }
+
+            updateConnectionInfo(port, baudRate) {
+                const infoElement = document.getElementById('connectionInfo');
+                document.getElementById('connectedPort').textContent = port;
+                document.getElementById('connectedBaud').textContent = baudRate;
+                document.getElementById('connectionStatus').textContent = 'Активно';
+                infoElement.style.display = 'block';
+            }
+
+            updateUI() {
+                const isConnected = this.serial.isConnected;
+                
+                document.getElementById('connectBtn').disabled = isConnected;
+                document.getElementById('disconnectBtn').disabled = !isConnected;
+                document.getElementById('sendBtn').disabled = !isConnected;
+                document.getElementById('messageInput').disabled = !isConnected;
+                document.getElementById('scanBtn').disabled = isConnected;
+
+                if (!isConnected) {
+                    document.getElementById('connectionInfo').style.display = 'none';
+                }
+            }
+        }
+
+        // Проверка поддержки Web Serial API
+        if (!('serial' in navigator)) {
+            document.addEventListener('DOMContentLoaded', () => {
+                const terminal = document.getElementById('terminal');
+                terminal.innerHTML = `
+                    <div class="terminal-line system" style="color: #e74c3c;">
+                        ❌ Web Serial API не поддерживается вашим браузером.
+                    </div>
+                    <div class="terminal-line system">
+                        Пожалуйста, используйте Chrome, Edge или Opera версии 89+.
+                    </div>
+                    <div class="terminal-line system">
+                        Убедитесь, что включен флаг: chrome://flags/#enable-experimental-web-platform-features
+                    </div>
+                `;
+            });
+        } else {
+            // Запуск приложения при загрузке страницы
+            document.addEventListener('DOMContentLoaded', () => {
+                new App();
+            });
+        }
+    </script>
+</body>
+</html>
