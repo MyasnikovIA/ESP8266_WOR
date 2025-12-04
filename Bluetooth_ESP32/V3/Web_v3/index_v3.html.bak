@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 MPU6050 BLE - 3D Cube Visualization</title>
+    <title>ESP32 MPU6050 BLE - 3D VR Visualization</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -283,14 +283,6 @@
             border-radius: 5px;
             font-size: 12px;
             z-index: 100;
-            min-width: 200px;
-        }
-        
-        .orientation-details {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            font-size: 10px;
         }
         
         .vr-controls {
@@ -434,7 +426,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 ESP32 MPU6050 BLE - 3D Cube Visualization</h1>
+            <h1>🚀 ESP32 MPU6050 BLE - 3D VR Visualization</h1>
             <div id="status" class="status disconnected">
                 <span class="indicator offline"></span> Отключено от устройства
             </div>
@@ -520,10 +512,7 @@
                 <div>Pitch: <span id="vrPitch">0.00</span>°</div>
                 <div>Roll: <span id="vrRoll">0.00</span>°</div>
                 <div>Yaw: <span id="vrYaw">0.00</span>°</div>
-                <div>Режим: <span id="vrMode">3D Cube</span></div>
-                <div id="orientationInfo" class="orientation-details">
-                    <!-- Детали ориентации будут здесь -->
-                </div>
+                <div>Режим: <span id="vrMode">VR Голова</span></div>
             </div>
             <div class="vr-view">
                 <div id="vrScene"></div>
@@ -537,9 +526,6 @@
                 </button>
                 <button id="toggleAxisBtn" class="btn vr-control-btn">
                     <span>🧭</span> Оси ВКЛ/ВЫКЛ
-                </button>
-                <button id="toggleWireframeBtn" class="btn vr-control-btn">
-                    <span>📐</span> Каркас ВКЛ/ВЫКЛ
                 </button>
             </div>
         </div>
@@ -567,7 +553,7 @@
             
             <div class="data-item">
                 <div class="data-label">
-                    <span>Yaw (Поворот)</span>
+                    <span>Yaw (Поворот головы)</span>
                 </div>
                 <div class="data-value">
                     <span id="yawValue">0.00</span><span class="data-unit">°</span>
@@ -657,7 +643,7 @@
         };
 
         // 3D Scene variables
-        let scene, camera, renderer, cube, axesHelper, gridHelper, wireframe;
+        let scene, camera, renderer, cube, axesHelper, gridHelper;
         let controls;
 
         // DOM элементы
@@ -696,11 +682,9 @@
             vrRoll: document.getElementById('vrRoll'),
             vrYaw: document.getElementById('vrYaw'),
             vrMode: document.getElementById('vrMode'),
-            orientationInfo: document.getElementById('orientationInfo'),
             resetViewBtn: document.getElementById('resetViewBtn'),
             toggleGridBtn: document.getElementById('toggleGridBtn'),
-            toggleAxisBtn: document.getElementById('toggleAxisBtn'),
-            toggleWireframeBtn: document.getElementById('toggleWireframeBtn')
+            toggleAxisBtn: document.getElementById('toggleAxisBtn')
         };
 
         // Утилиты
@@ -720,162 +704,8 @@
             
             formatNumber: (num, decimals = 2) => {
                 return parseFloat(num).toFixed(decimals);
-            },
-            
-            getDirectionText: (angle, type) => {
-                const absAngle = Math.abs(angle);
-                if (type === 'pitch') {
-                    return angle > 0 ? `Наклон вперед: ${absAngle.toFixed(1)}°` : `Наклон назад: ${absAngle.toFixed(1)}°`;
-                } else if (type === 'roll') {
-                    return angle > 0 ? `Наклон вправо: ${absAngle.toFixed(1)}°` : `Наклон влево: ${absAngle.toFixed(1)}°`;
-                } else {
-                    return `Поворот: ${angle.toFixed(1)}°`;
-                }
             }
         };
-
-        // Создание 3D модели куба (аналогично WiFi версии)
-        function createCubeModel() {
-            try {
-                // Группа для куба
-                cube = new THREE.Group();
-                
-                // Размер куба
-                const cubeSize = 2;
-                
-                // Цвета граней (аналогично WiFi версии)
-                const faces = [
-                    { 
-                        name: 'FRONT', 
-                        color: 0x3498db, // Синий
-                        rotation: { x: 0, y: 0, z: 0 },
-                        position: { x: 0, y: 0, z: cubeSize/2 },
-                        textColor: '#ffffff'
-                    },
-                    { 
-                        name: 'BACK', 
-                        color: 0x2ecc71, // Зеленый
-                        rotation: { x: 0, y: Math.PI, z: 0 },
-                        position: { x: 0, y: 0, z: -cubeSize/2 },
-                        textColor: '#ffffff'
-                    },
-                    { 
-                        name: 'LEFT', 
-                        color: 0xe74c3c, // Красный
-                        rotation: { x: 0, y: Math.PI/2, z: 0 },
-                        position: { x: -cubeSize/2, y: 0, z: 0 },
-                        textColor: '#ffffff'
-                    },
-                    { 
-                        name: 'RIGHT', 
-                        color: 0xf39c12, // Оранжевый
-                        rotation: { x: 0, y: -Math.PI/2, z: 0 },
-                        position: { x: cubeSize/2, y: 0, z: 0 },
-                        textColor: '#ffffff'
-                    },
-                    { 
-                        name: 'TOP', 
-                        color: 0x9b59b6, // Фиолетовый
-                        rotation: { x: -Math.PI/2, y: 0, z: 0 },
-                        position: { x: 0, y: cubeSize/2, z: 0 },
-                        textColor: '#ffffff'
-                    },
-                    { 
-                        name: 'BOTTOM', 
-                        color: 0x1abc9c, // Бирюзовый
-                        rotation: { x: Math.PI/2, y: 0, z: 0 },
-                        position: { x: 0, y: -cubeSize/2, z: 0 },
-                        textColor: '#ffffff'
-                    }
-                ];
-                
-                // Создаем каждую грань
-                faces.forEach((face) => {
-                    // Создаем геометрию грани
-                    const geometry = new THREE.PlaneGeometry(cubeSize, cubeSize);
-                    const material = new THREE.MeshPhongMaterial({ 
-                        color: face.color,
-                        transparent: true,
-                        opacity: 0.8,
-                        side: THREE.DoubleSide,
-                        emissive: face.color,
-                        emissiveIntensity: 0.1
-                    });
-                    
-                    const mesh = new THREE.Mesh(geometry, material);
-                    mesh.position.set(face.position.x, face.position.y, face.position.z);
-                    mesh.rotation.set(face.rotation.x, face.rotation.y, face.rotation.z);
-                    
-                    // Добавляем текст на грань
-                    createFaceLabel(face, cubeSize);
-                    
-                    // Добавляем грань в группу куба
-                    cube.add(mesh);
-                });
-                
-                // Добавляем каркас куба
-                const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-                const edges = new THREE.EdgesGeometry(cubeGeometry);
-                const lineMaterial = new THREE.LineBasicMaterial({ 
-                    color: 0xffffff, 
-                    linewidth: 1 
-                });
-                wireframe = new THREE.LineSegments(edges, lineMaterial);
-                wireframe.visible = true;
-                cube.add(wireframe);
-                
-                // Центрируем куб
-                cube.position.y = 0.5;
-                
-                scene.add(cube);
-                logger.info('3D модель куба создана');
-            } catch (error) {
-                logger.error(`Ошибка создания 3D модели куба: ${error.message}`);
-            }
-        }
-
-        // Создание текстовой метки для грани
-        function createFaceLabel(face, cubeSize) {
-            try {
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.width = 512;
-                canvas.height = 512;
-                
-                // Заливаем фон
-                context.fillStyle = `rgba(${Math.floor(face.color >> 16 & 255)}, ${Math.floor(face.color >> 8 & 255)}, ${Math.floor(face.color & 255)}, 0.3)`;
-                context.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Рисуем текст
-                context.font = 'bold 80px Arial';
-                context.textAlign = 'center';
-                context.textBaseline = 'middle';
-                context.fillStyle = face.textColor;
-                context.fillText(face.name, canvas.width/2, canvas.height/2);
-                
-                // Создаем текстуру
-                const texture = new THREE.CanvasTexture(canvas);
-                const spriteMaterial = new THREE.SpriteMaterial({ 
-                    map: texture,
-                    transparent: true,
-                    opacity: 0.9
-                });
-                
-                const sprite = new THREE.Sprite(spriteMaterial);
-                sprite.scale.set(1.5, 1.5, 1);
-                sprite.position.copy(new THREE.Vector3(face.position.x, face.position.y, face.position.z));
-                
-                // Немного выдвигаем текст вперед от грани
-                const offset = 0.01;
-                sprite.position.x += (face.position.x !== 0 ? Math.sign(face.position.x) * offset : 0);
-                sprite.position.y += (face.position.y !== 0 ? Math.sign(face.position.y) * offset : 0);
-                sprite.position.z += (face.position.z !== 0 ? Math.sign(face.position.z) * offset : 0);
-                
-                cube.add(sprite);
-            } catch (error) {
-                console.error('Ошибка создания текстовой метки:', error);
-            }
-        }
 
         // Инициализация 3D сцены
         function init3DScene() {
@@ -886,7 +716,7 @@
                 
                 // Создание камеры
                 camera = new THREE.PerspectiveCamera(75, elements.vrScene.offsetWidth / elements.vrScene.offsetHeight, 0.1, 1000);
-                camera.position.set(5, 5, 5);
+                camera.position.set(3, 3, 3);
                 
                 // Создание рендерера
                 renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -897,27 +727,25 @@
                 controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
-                controls.minDistance = 3;
-                controls.maxDistance = 20;
                 
                 // Освещение
                 const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
                 scene.add(ambientLight);
                 
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(5, 10, 5);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+                directionalLight.position.set(5, 5, 5);
                 scene.add(directionalLight);
                 
-                // Создание 3D модели куба
-                createCubeModel();
+                // Создание 3D модели головы
+                createHeadModel();
                 
-                // Добавление сетки пола
+                // Добавление сетки
                 gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
                 scene.add(gridHelper);
                 gridHelper.visible = true;
                 
-                // Добавление осей координат
-                axesHelper = new THREE.AxesHelper(3);
+                // Добавление осей
+                axesHelper = new THREE.AxesHelper(2);
                 scene.add(axesHelper);
                 axesHelper.visible = true;
                 
@@ -941,6 +769,50 @@
                 logger.error(`Ошибка инициализации 3D сцены: ${error.message}`);
             }
         }
+        
+        // Создание 3D модели головы
+        function createHeadModel() {
+            try {
+                // Голова (сфера)
+                const headGeometry = new THREE.SphereGeometry(1, 32, 32);
+                const headMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x3498db,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const head = new THREE.Mesh(headGeometry, headMaterial);
+                
+                // Правый "глаз" VR очков
+                const rightEyeGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 32);
+                const rightEyeMaterial = new THREE.MeshPhongMaterial({ color: 0x2ecc71 });
+                const rightEye = new THREE.Mesh(rightEyeGeometry, rightEyeMaterial);
+                rightEye.position.set(0.4, 0.1, 0.5);
+                
+                // Левый "глаз" VR очков
+                const leftEyeGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 32);
+                const leftEyeMaterial = new THREE.MeshPhongMaterial({ color: 0x2ecc71 });
+                const leftEye = new THREE.Mesh(leftEyeGeometry, leftEyeMaterial);
+                leftEye.position.set(-0.4, 0.1, 0.5);
+                
+                // Оправа очков
+                const frameGeometry = new THREE.TorusGeometry(0.8, 0.05, 16, 100);
+                const frameMaterial = new THREE.MeshPhongMaterial({ color: 0xe74c3c });
+                const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+                frame.position.z = 0.5;
+                
+                // Создаем группу для всей модели
+                cube = new THREE.Group();
+                cube.add(head);
+                cube.add(rightEye);
+                cube.add(leftEye);
+                cube.add(frame);
+                
+                scene.add(cube);
+                logger.info('3D модель головы создана');
+            } catch (error) {
+                logger.error(`Ошибка создания 3D модели: ${error.message}`);
+            }
+        }
 
         // Обновление 3D визуализации
         function update3DVisualization(pitch, roll, yaw) {
@@ -952,47 +824,19 @@
                 const rollRad = roll * (Math.PI / 180);
                 const yawRad = yaw * (Math.PI / 180);
                 
-                // Установка вращения куба
-                // Порядок вращения: Yaw (Y), Pitch (X), Roll (Z)
-                cube.rotation.y = yawRad;    // Поворот (Yaw)
-                cube.rotation.x = pitchRad;  // Наклон вперед/назад (Pitch)
-                cube.rotation.z = rollRad;   // Наклон влево/вправо (Roll)
+                // Установка вращения (как в WiFi версии)
+                // Порядок: pitch (X), roll (Z), yaw (Y)
+                cube.rotation.x = pitchRad;  // Наклон вперед/назад
+                cube.rotation.z = rollRad;   // Наклон влево/вправо
+                cube.rotation.y = yawRad;    // Поворот головы
                 
                 // Обновление информации в HUD
                 elements.vrPitch.textContent = utils.formatNumber(pitch);
                 elements.vrRoll.textContent = utils.formatNumber(roll);
                 elements.vrYaw.textContent = utils.formatNumber(yaw);
-                elements.vrMode.textContent = '3D Cube';
-                
-                // Обновление детальной информации об ориентации
-                updateOrientationInfo(pitch, roll, yaw);
             } catch (error) {
                 console.error('Ошибка обновления 3D визуализации:', error);
             }
-        }
-
-        // Обновление информации об ориентации
-        function updateOrientationInfo(pitch, roll, yaw) {
-            const pitchText = utils.getDirectionText(pitch, 'pitch');
-            const rollText = utils.getDirectionText(roll, 'roll');
-            const yawText = `Поворот: ${yaw.toFixed(1)}°`;
-            
-            // Определяем, какая грань "смотрит" вперед
-            let frontFace = 'FRONT';
-            if (Math.abs(yaw) >= 45 && Math.abs(yaw) < 135) {
-                frontFace = yaw > 0 ? 'RIGHT' : 'LEFT';
-            } else if (Math.abs(yaw) >= 135 && Math.abs(yaw) < 225) {
-                frontFace = 'BACK';
-            } else if (Math.abs(yaw) >= 225 && Math.abs(yaw) < 315) {
-                frontFace = yaw > 0 ? 'LEFT' : 'RIGHT';
-            }
-            
-            elements.orientationInfo.innerHTML = `
-                <div>${pitchText}</div>
-                <div>${rollText}</div>
-                <div>${yawText}</div>
-                <div>Передняя грань: <strong>${frontFace}</strong></div>
-            `;
         }
 
         // Функции логирования
@@ -1429,7 +1273,7 @@
             // Кнопки 3D управления
             elements.resetViewBtn.addEventListener('click', () => {
                 if (camera && controls) {
-                    camera.position.set(5, 5, 5);
+                    camera.position.set(3, 3, 3);
                     controls.reset();
                 }
                 logger.info('Вид 3D сцены сброшен');
@@ -1446,13 +1290,6 @@
                 if (axesHelper) {
                     axesHelper.visible = !axesHelper.visible;
                     logger.info(`Оси ${axesHelper.visible ? 'включены' : 'выключены'}`);
-                }
-            });
-            
-            elements.toggleWireframeBtn.addEventListener('click', () => {
-                if (wireframe) {
-                    wireframe.visible = !wireframe.visible;
-                    logger.info(`Каркас куба ${wireframe.visible ? 'включен' : 'выключен'}`);
                 }
             });
         }

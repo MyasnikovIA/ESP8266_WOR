@@ -48,8 +48,6 @@
         .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin-left: 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .manual-connect { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 5px solid #ffc107; }
-        .error-box { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 5px solid #f5c6cb; }
-        .success-box { background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 5px solid #c3e6cb; }
     </style>
 </head>
 <body>
@@ -61,48 +59,43 @@
         <div class="data">
             <h3>Bluetooth Connection</h3>
             
-            <div class="manual-connect" id="connectionInstructions">
-                <p><strong>Подключение к VR Head Tracker:</strong></p>
+            <div class="manual-connect">
+                <p><strong>Если устройство не появляется в списке:</strong></p>
                 <ol>
                     <li>Убедитесь, что ESP32 включен и Bluetooth активен</li>
-                    <li>Нажмите "Connect to VR Head"</li>
-                    <li>В появившемся окне выберите "VR_Head_Hom_001"</li>
-                    <li>Если устройство не видно, нажмите "Scan All Devices"</li>
+                    <li>Устройство должно рекламировать службу с UUID: <code>4fafc201-1fb5-459e-8fcc-c5c9c331914b</code></li>
+                    <li>Попробуйте перезагрузить ESP32</li>
+                    <li>Нажмите кнопку "Connect to VR Head" для прямого подключения</li>
                 </ol>
             </div>
             
             <div class="controls">
-                <button class="btn-bluetooth" id="connectBtn" onclick="connectToDevice()">
+                <button class="btn-bluetooth" id="connectBtn" onclick="connectBluetooth()">
                     <span id="connectText">Connect to VR Head</span>
                     <span id="connectSpinner" style="display:none;" class="loading"></span>
                 </button>
-                <button class="btn-info" id="scanAllBtn" onclick="scanAllDevices()">
-                    <span id="scanText">Scan All Devices</span>
-                    <span id="scanSpinner" style="display:none;" class="loading"></span>
+                <button class="btn-success" id="directConnectBtn" onclick="directConnect()">
+                    <span id="directConnectText">Direct Connect (Recommended)</span>
+                    <span id="directConnectSpinner" style="display:none;" class="loading"></span>
                 </button>
                 <button class="btn-danger" id="disconnectBtn" onclick="disconnectBluetooth()" disabled>Disconnect</button>
+                <button class="btn-info" id="scanBtn" onclick="showAllDevices()" disabled>Show All Bluetooth Devices</button>
             </div>
             
-            <div id="deviceListContainer" style="display: none; margin-top: 15px;">
-                <h4>Available Bluetooth Devices:</h4>
-                <div class="device-list" id="deviceList">
-                    <div class="device-item" style="color: #666; font-style: italic;">
-                        Scanning for devices... Please wait
-                    </div>
-                </div>
+            <div id="deviceListContainer" style="display: none;">
+                <h4>Available Devices:</h4>
+                <div class="device-list" id="deviceList"></div>
             </div>
             
-            <div id="connectionInfo" style="margin-top: 15px; padding: 15px; background: #e9ecef; border-radius: 5px; display: none;">
-                <h4>Connection Information</h4>
+            <div id="connectionInfo" style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 5px; display: none;">
                 <p><strong>Connected Device:</strong> <span id="connectedDeviceName">-</span></p>
                 <p><strong>Status:</strong> <span id="connectionStatus">-</span></p>
                 <p><strong>Device ID:</strong> <span id="connectedDeviceId">-</span></p>
-                <p><strong>Service UUID:</strong> <code id="serviceUUID">-</code></p>
-                <p><strong>Characteristic UUID:</strong> <code id="characteristicUUID">-</code></p>
             </div>
             
-            <div class="error-box" id="errorBox" style="display: none;">
-                <strong>Error:</strong> <span id="errorMessage"></span>
+            <div class="debug-info" id="debugInfo" style="display: none;">
+                <strong>Debug Information:</strong>
+                <div id="debugContent"></div>
             </div>
         </div>
         
@@ -185,13 +178,11 @@
             <button class="btn-info" onclick="sendCommand('STATUS')" id="statusBtn" disabled>Get Status</button>
             <button class="btn-warning" onclick="sendCommand('LED ON')" id="ledOnBtn" disabled>LED On</button>
             <button class="btn-warning" onclick="sendCommand('LED OFF')" id="ledOffBtn" disabled>LED Off</button>
-            <button class="btn-info" onclick="sendCommand('TEMP')" id="tempBtn" disabled>Get Temperature</button>
-            <button class="btn-info" onclick="sendCommand('DATA')" id="dataBtn" disabled>Get Raw Data</button>
         </div>
         
         <div class="data">
             <h3>Last Message</h3>
-            <div id="lastMessage" style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; min-height: 20px; max-height: 200px; overflow-y: auto;">No data received</div>
+            <div id="lastMessage" style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; min-height: 20px;">No data received</div>
         </div>
         
         <div class="data">
@@ -199,10 +190,10 @@
             <div style="background: #e9ecef; padding: 15px; border-radius: 5px;">
                 <p><strong>Как подключиться:</strong></p>
                 <ol>
-                    <li>Нажмите "Connect to VR Head" для прямого подключения</li>
+                    <li>Нажмите "Direct Connect (Recommended)" для прямого подключения</li>
                     <li>В появившемся окне выберите "VR_Head_Hom_001"</li>
-                    <li>Если устройство не видно, нажмите "Scan All Devices"</li>
-                    <li>После подключения данные начнут автоматически обновляться</li>
+                    <li>Если устройство не видно, убедитесь что ESP32 включен</li>
+                    <li>Перезагрузите ESP32 если нужно</li>
                 </ol>
                 
                 <p><strong>Требования:</strong></p>
@@ -219,19 +210,11 @@
                     <li>Перезагрузите страницу в браузере</li>
                     <li>Убедитесь что Bluetooth включен на компьютере</li>
                     <li>Попробуйте другой браузер (Chrome рекомендуется)</li>
-                    <li>Убедитесь что страница открыта по HTTPS или localhost</li>
                 </ol>
                 
-                <div style="margin-top: 10px;">
-                    <button class="btn-info" onclick="toggleDebug()" id="debugBtn">Show Debug Info</button>
-                    <button class="btn-warning" onclick="clearLog()" style="margin-left: 10px;">Clear Log</button>
-                </div>
+                <button class="btn-info" onclick="toggleDebug()" style="margin-top: 10px;">Show Debug Info</button>
+                <button class="btn-warning" onclick="testBluetoothAPI()" style="margin-top: 10px;">Test Bluetooth API</button>
             </div>
-        </div>
-        
-        <div class="debug-info" id="debugInfo" style="display: none;">
-            <h4 style="color: white; margin-top: 0;">Debug Information</h4>
-            <div id="debugContent" style="max-height: 300px; overflow-y: auto;"></div>
         </div>
     </div>
 
@@ -242,10 +225,6 @@
         let bluetoothService = null;
         let bluetoothCharacteristic = null;
         
-        // UUIDs - ДОЛЖНЫ СОВПАДАТЬ С СКЕТЧЕМ!
-        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-        const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-        
         // UI elements
         let statusDiv = document.getElementById('status');
         let lastMessageDiv = document.getElementById('lastMessage');
@@ -254,24 +233,22 @@
         let connectedDeviceNameSpan = document.getElementById('connectedDeviceName');
         let connectionStatusSpan = document.getElementById('connectionStatus');
         let connectedDeviceIdSpan = document.getElementById('connectedDeviceId');
-        let serviceUUIDEl = document.getElementById('serviceUUID');
-        let characteristicUUIDEl = document.getElementById('characteristicUUID');
         let deviceListContainer = document.getElementById('deviceListContainer');
         let deviceList = document.getElementById('deviceList');
         let connectionInfo = document.getElementById('connectionInfo');
-        let errorBox = document.getElementById('errorBox');
-        let errorMessage = document.getElementById('errorMessage');
         let debugInfo = document.getElementById('debugInfo');
         let debugContent = document.getElementById('debugContent');
-        let connectionInstructions = document.getElementById('connectionInstructions');
+        
+        // UUIDs
+        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
         
         // Enable/disable control buttons
         function updateButtonStates(connected) {
             const buttons = [
                 'setZeroBtn', 'resetZeroBtn', 'resetAnglesBtn',
                 'getDataBtn', 'recalibrateBtn', 'statusBtn',
-                'ledOnBtn', 'ledOffBtn', 'disconnectBtn',
-                'tempBtn', 'dataBtn'
+                'ledOnBtn', 'ledOffBtn', 'disconnectBtn', 'scanBtn'
             ];
             
             buttons.forEach(btnId => {
@@ -282,7 +259,7 @@
             });
             
             document.getElementById('connectBtn').disabled = connected;
-            document.getElementById('scanAllBtn').disabled = connected;
+            document.getElementById('directConnectBtn').disabled = connected;
         }
         
         // Show loading spinner
@@ -294,45 +271,32 @@
             if (spinnerElement) spinnerElement.style.display = show ? 'inline-block' : 'none';
         }
         
-        // Show error message
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorBox.style.display = 'block';
-            logDebug('ERROR: ' + message);
-        }
-        
-        // Hide error message
-        function hideError() {
-            errorBox.style.display = 'none';
-        }
-        
-        // Connect to specific VR Head device
-        async function connectToDevice() {
+        // Connect directly to VR Head device
+        async function directConnect() {
             try {
-                hideError();
-                showLoading('connect', true);
+                showLoading('directConnect', true);
                 statusDiv.textContent = 'Connecting to VR Head...';
                 statusDiv.className = 'status connecting';
                 
                 if (!navigator.bluetooth) {
-                    throw new Error('Web Bluetooth API is not supported in this browser. Please use Chrome, Edge, or Opera.');
+                    throw new Error('Web Bluetooth API не поддерживается в этом браузере');
                 }
                 
-                logDebug('Requesting Bluetooth device with service UUID: ' + SERVICE_UUID);
+                logDebug('Requesting Bluetooth device with service UUID...');
                 
-                // ВАЖНО: указываем UUID службы в optionalServices
+                // Direct connection with service UUID - это ОЧЕНЬ ВАЖНО!
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{
-                        name: 'VR_Head_Hom_001'  // Фильтр по имени устройства
+                        services: [SERVICE_UUID]  // Фильтр по UUID службы
                     }],
-                    optionalServices: [SERVICE_UUID]  // ОБЯЗАТЕЛЬНО добавляем UUID службы
+                    optionalServices: [SERVICE_UUID]
                 });
                 
                 logDebug(`Device selected: ${bluetoothDevice.name || 'Unnamed'} (ID: ${bluetoothDevice.id})`);
                 
                 statusDiv.textContent = 'Connecting to GATT server...';
                 
-                // Add event listener for disconnection
+                // Add event listeners for disconnection
                 bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
                 
                 // Connect to GATT server
@@ -341,15 +305,15 @@
                 
                 statusDiv.textContent = 'Getting service...';
                 
-                // Get the service - теперь используем правильный UUID
+                // Get the service
                 bluetoothService = await bluetoothServer.getPrimaryService(SERVICE_UUID);
-                logDebug('Service found: ' + SERVICE_UUID);
+                logDebug('Service found');
                 
                 statusDiv.textContent = 'Getting characteristic...';
                 
                 // Get the characteristic
                 bluetoothCharacteristic = await bluetoothService.getCharacteristic(CHARACTERISTIC_UUID);
-                logDebug('Characteristic found: ' + CHARACTERISTIC_UUID);
+                logDebug('Characteristic found');
                 
                 statusDiv.textContent = 'Enabling notifications...';
                 
@@ -366,39 +330,36 @@
                 connectedDeviceNameSpan.textContent = bluetoothDevice.name || 'VR Head Tracker';
                 connectedDeviceIdSpan.textContent = bluetoothDevice.id;
                 connectionStatusSpan.textContent = 'Connected';
-                serviceUUIDEl.textContent = SERVICE_UUID;
-                characteristicUUIDEl.textContent = CHARACTERISTIC_UUID;
                 connectionInfo.style.display = 'block';
-                connectionInstructions.style.display = 'none';
                 
                 // Enable buttons
                 updateButtonStates(true);
                 
                 // Request initial data
-                setTimeout(() => sendCommand('GET_DATA'), 500);
+                sendCommand('GET_DATA');
                 
-                showNotification('Successfully connected to VR Head Tracker!', 'success');
-                logDebug('Connection established successfully');
+                showNotification('Bluetooth connected successfully!', 'success');
+                logDebug('Connection complete');
                 
             } catch (error) {
                 console.error('Bluetooth connection error:', error);
-                logDebug('Connection failed: ' + error.message);
                 
                 if (error.name === 'NotFoundError') {
                     statusDiv.textContent = 'Device not found';
-                    showError('VR Head device "VR_Head_Hom_001" not found. Make sure: 1. ESP32 is powered on, 2. Bluetooth is advertising, 3. Device name is correct.');
+                    showNotification('VR Head device not found. Make sure ESP32 is powered on and Bluetooth is advertising.', 'error');
+                    logDebug('Device not found error. Check:');
+                    logDebug('1. ESP32 is powered on');
+                    logDebug('2. Bluetooth is enabled on ESP32');
+                    logDebug('3. Service UUID is correct: ' + SERVICE_UUID);
                 } else if (error.name === 'SecurityError') {
                     statusDiv.textContent = 'Permission denied';
-                    showError('Bluetooth permission denied. Please allow Bluetooth access in your browser.');
+                    showNotification('Bluetooth permission denied. Please allow Bluetooth access.', 'error');
                 } else if (error.name === 'NetworkError') {
                     statusDiv.textContent = 'Connection failed';
-                    showError('Connection failed. Device may be out of range or not responding.');
-                } else if (error.name === 'InvalidStateError') {
-                    statusDiv.textContent = 'Already connected';
-                    showError('Already connected to a Bluetooth device.');
+                    showNotification('Connection failed. Device may be out of range.', 'error');
                 } else {
                     statusDiv.textContent = 'Connection error';
-                    showError('Failed to connect: ' + error.message);
+                    showNotification('Failed to connect: ' + error.message, 'error');
                 }
                 
                 statusDiv.className = 'status disconnected';
@@ -410,50 +371,110 @@
                 bluetoothCharacteristic = null;
                 
             } finally {
-                showLoading('connect', false);
+                showLoading('directConnect', false);
             }
         }
         
-        // Scan all Bluetooth devices
-        async function scanAllDevices() {
+        // Legacy connect function (shows all devices)
+        async function connectBluetooth() {
             try {
-                hideError();
-                showLoading('scan', true);
-                deviceList.innerHTML = '';
-                deviceListContainer.style.display = 'block';
+                showLoading('connect', true);
+                statusDiv.textContent = 'Scanning for all Bluetooth devices...';
+                statusDiv.className = 'status connecting';
                 
-                logDebug('Scanning for all Bluetooth devices...');
+                if (!navigator.bluetooth) {
+                    throw new Error('Web Bluetooth API не поддерживается в этом браузере');
+                }
                 
-                // Request ALL Bluetooth devices
-                const device = await navigator.bluetooth.requestDevice({
+                logDebug('Requesting all Bluetooth devices...');
+                
+                // Request ALL Bluetooth devices (no filters)
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
                     optionalServices: []  // Не запрашиваем сервисы заранее
                 });
                 
-                logDebug(`Found device: ${device.name || 'Unnamed'} (ID: ${device.id})`);
+                logDebug(`Device selected: ${bluetoothDevice.name || 'Unnamed'} (ID: ${bluetoothDevice.id})`);
                 
-                // Show the device in the list
+                // Now try to connect to GATT and discover services
+                statusDiv.textContent = 'Connecting to device...';
+                
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                bluetoothServer = await bluetoothDevice.gatt.connect();
+                
+                // Discover services
+                statusDiv.textContent = 'Discovering services...';
+                const services = await bluetoothServer.getPrimaryServices();
+                logDebug(`Found ${services.length} services`);
+                
+                // Try to find our service
+                let serviceFound = false;
+                for (const service of services) {
+                    logDebug(`Service UUID: ${service.uuid}`);
+                    if (service.uuid === SERVICE_UUID) {
+                        bluetoothService = service;
+                        serviceFound = true;
+                        break;
+                    }
+                }
+                
+                if (!serviceFound) {
+                    throw new Error('VR Head service not found on this device');
+                }
+                
+                // Get the characteristic
+                bluetoothCharacteristic = await bluetoothService.getCharacteristic(CHARACTERISTIC_UUID);
+                
+                // Enable notifications
+                await bluetoothCharacteristic.startNotifications();
+                bluetoothCharacteristic.addEventListener('characteristicvaluechanged', handleBluetoothData);
+                
+                // Update UI
+                statusDiv.textContent = 'Connected';
+                statusDiv.className = 'status connected';
+                connectedDeviceNameSpan.textContent = bluetoothDevice.name || 'VR Head Tracker';
+                connectedDeviceIdSpan.textContent = bluetoothDevice.id;
+                connectionStatusSpan.textContent = 'Connected';
+                connectionInfo.style.display = 'block';
+                updateButtonStates(true);
+                
+                sendCommand('GET_DATA');
+                showNotification('Connected to ' + (bluetoothDevice.name || 'device'), 'success');
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                statusDiv.textContent = 'Error: ' + error.message;
+                statusDiv.className = 'status disconnected';
+                showNotification('Connection failed: ' + error.message, 'error');
+                bluetoothDevice = null;
+            } finally {
+                showLoading('connect', false);
+            }
+        }
+        
+        // Show all Bluetooth devices
+        async function showAllDevices() {
+            try {
+                deviceList.innerHTML = '';
+                deviceListContainer.style.display = 'block';
+                
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: []
+                });
+                
                 const deviceItem = document.createElement('div');
                 deviceItem.className = 'device-item';
                 deviceItem.innerHTML = `
                     <div class="device-name">${device.name || 'Unnamed Device'}</div>
-                    <div class="device-id">ID: ${device.id}</div>
-                    <div style="font-size: 11px; color: #888; margin-top: 5px;">
-                        To connect to VR Head, use "Connect to VR Head" button
-                    </div>
+                    <div class="device-id">${device.id}</div>
+                    <div>Click "Direct Connect" to connect to VR Head</div>
                 `;
                 
                 deviceList.appendChild(deviceItem);
                 
-                showNotification('Device found: ' + (device.name || 'Unnamed'), 'info');
-                
             } catch (error) {
                 console.error('Scan error:', error);
-                if (error.name !== 'NotFoundError') {
-                    showError('Scan error: ' + error.message);
-                }
-            } finally {
-                showLoading('scan', false);
             }
         }
         
@@ -466,7 +487,6 @@
                 
                 logDebug('Received: ' + data.substring(0, 100) + (data.length > 100 ? '...' : ''));
                 lastMessageDiv.textContent = data;
-                lastMessageDiv.scrollTop = lastMessageDiv.scrollHeight;
                 
                 // Parse sensor data
                 if (data.includes('PITCH:') && data.includes('ROLL:') && data.includes('YAW:')) {
@@ -478,7 +498,6 @@
                 
             } catch (error) {
                 console.error('Error processing Bluetooth data:', error);
-                logDebug('Error processing data: ' + error.message);
             }
         }
         
@@ -527,7 +546,6 @@
                 
             } catch (error) {
                 console.error('Error parsing sensor data:', error);
-                logDebug('Parse error: ' + error.message);
             }
         }
         
@@ -558,12 +576,6 @@
             if (data.includes('STATUS:')) {
                 showNotification('Device status received', 'info');
             }
-            if (data.includes('TEMPERATURE:')) {
-                showNotification('Temperature data received', 'info');
-            }
-            if (data.includes('RAW:') || data.includes('ACCEL:') || data.includes('GYRO:')) {
-                showNotification('Raw sensor data received', 'info');
-            }
         }
         
         // Handle disconnection
@@ -573,23 +585,41 @@
             statusDiv.className = 'status disconnected';
             connectionStatusSpan.textContent = 'Disconnected';
             updateButtonStates(false);
-            connectionInstructions.style.display = 'block';
             showNotification('Bluetooth disconnected', 'error');
-            logDebug('Device disconnected');
             
-            // Clean up
-            bluetoothDevice = null;
-            bluetoothServer = null;
-            bluetoothService = null;
-            bluetoothCharacteristic = null;
-            
-            // Try to reconnect after 5 seconds
+            // Try to reconnect after 3 seconds
             setTimeout(() => {
-                if (!bluetoothDevice) {
+                if (bluetoothDevice && !bluetoothDevice.gatt.connected) {
                     logDebug('Attempting to reconnect...');
-                    connectToDevice();
+                    reconnectBluetooth();
                 }
-            }, 5000);
+            }, 3000);
+        }
+        
+        // Attempt to reconnect
+        async function reconnectBluetooth() {
+            try {
+                if (bluetoothDevice) {
+                    statusDiv.textContent = 'Reconnecting...';
+                    statusDiv.className = 'status connecting';
+                    
+                    bluetoothServer = await bluetoothDevice.gatt.connect();
+                    bluetoothService = await bluetoothServer.getPrimaryService(SERVICE_UUID);
+                    bluetoothCharacteristic = await bluetoothService.getCharacteristic(CHARACTERISTIC_UUID);
+                    await bluetoothCharacteristic.startNotifications();
+                    bluetoothCharacteristic.addEventListener('characteristicvaluechanged', handleBluetoothData);
+                    
+                    statusDiv.textContent = 'Connected';
+                    statusDiv.className = 'status connected';
+                    connectionStatusSpan.textContent = 'Connected';
+                    updateButtonStates(true);
+                    
+                    showNotification('Reconnected successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Reconnection failed:', error);
+                bluetoothDevice = null;
+            }
         }
         
         // Disconnect from Bluetooth
@@ -608,11 +638,9 @@
                     const data = encoder.encode(command);
                     await bluetoothCharacteristic.writeValue(data);
                     logDebug('Command sent: ' + command);
-                    showNotification('Command sent: ' + command, 'info');
                 } catch (error) {
                     console.error('Error sending command:', error);
                     showNotification('Failed to send command: ' + error.message, 'error');
-                    logDebug('Send error: ' + error.message);
                 }
             } else {
                 showNotification('Not connected to Bluetooth device', 'error');
@@ -664,16 +692,29 @@
         // Toggle debug info
         function toggleDebug() {
             debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
-            const debugBtn = document.getElementById('debugBtn');
-            debugBtn.textContent = debugInfo.style.display === 'none' ? 'Show Debug Info' : 'Hide Debug Info';
         }
         
-        // Clear log
-        function clearLog() {
-            if (debugContent) {
-                debugContent.innerHTML = '';
+        // Test Bluetooth API
+        async function testBluetoothAPI() {
+            logDebug('=== Testing Bluetooth API ===');
+            logDebug('navigator.bluetooth available: ' + (!!navigator.bluetooth));
+            
+            if (navigator.bluetooth) {
+                try {
+                    const availability = await navigator.bluetooth.getAvailability();
+                    logDebug('Bluetooth available: ' + availability);
+                    
+                    if (!availability) {
+                        showNotification('Bluetooth is not available on this device', 'error');
+                    } else {
+                        showNotification('Bluetooth is available on this device', 'success');
+                    }
+                } catch (error) {
+                    logDebug('Error checking Bluetooth availability: ' + error.message);
+                }
             }
-            lastMessageDiv.textContent = 'Log cleared';
+            
+            logDebug('=== Test Complete ===');
         }
         
         // Initialize
@@ -681,14 +722,12 @@
             // Check for Web Bluetooth support
             if (!navigator.bluetooth) {
                 const errorMsg = 'Web Bluetooth API is not available. Please use Chrome, Edge, or Opera on Windows 10/11, macOS, or Android.';
-                showError(errorMsg);
+                showNotification(errorMsg, 'error');
                 statusDiv.textContent = 'Browser not supported';
                 logDebug(errorMsg);
             } else {
                 logDebug('Web Bluetooth API is supported');
-                logDebug('Service UUID: ' + SERVICE_UUID);
-                logDebug('Characteristic UUID: ' + CHARACTERISTIC_UUID);
-                logDebug('Page loaded successfully');
+                testBluetoothAPI();
             }
             
             // Initial button state
@@ -703,14 +742,6 @@
                 }
             `;
             document.head.appendChild(style);
-            
-            // Auto-connect on page load (for testing)
-            // setTimeout(() => {
-            //     if (!bluetoothDevice) {
-            //         logDebug('Attempting auto-connect...');
-            //         connectToDevice();
-            //     }
-            // }, 1000);
         });
     </script>
 </body>

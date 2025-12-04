@@ -66,7 +66,7 @@
                 <ol>
                     <li>Убедитесь, что ESP32 включен и Bluetooth активен</li>
                     <li>Нажмите "Connect to VR Head"</li>
-                    <li>В появившемся окне выберите "VR_Head_Hom_001"</li>
+                    <li>В появившемся окне выберите "VR_Head_Stable"</li>
                     <li>Если устройство не видно, нажмите "Scan All Devices"</li>
                 </ol>
             </div>
@@ -200,7 +200,7 @@
                 <p><strong>Как подключиться:</strong></p>
                 <ol>
                     <li>Нажмите "Connect to VR Head" для прямого подключения</li>
-                    <li>В появившемся окне выберите "VR_Head_Hom_001"</li>
+                    <li>В появившемся окне выберите "VR_Head_Stable"</li>
                     <li>Если устройство не видно, нажмите "Scan All Devices"</li>
                     <li>После подключения данные начнут автоматически обновляться</li>
                 </ol>
@@ -323,7 +323,7 @@
                 // ВАЖНО: указываем UUID службы в optionalServices
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{
-                        name: 'VR_Head_Hom_001'  // Фильтр по имени устройства
+                        name: 'VR_Head_Stable'  // Фильтр по имени устройства
                     }],
                     optionalServices: [SERVICE_UUID]  // ОБЯЗАТЕЛЬНО добавляем UUID службы
                 });
@@ -386,7 +386,7 @@
                 
                 if (error.name === 'NotFoundError') {
                     statusDiv.textContent = 'Device not found';
-                    showError('VR Head device "VR_Head_Hom_001" not found. Make sure: 1. ESP32 is powered on, 2. Bluetooth is advertising, 3. Device name is correct.');
+                    showError('VR Head device "VR_Head_Stable" not found. Make sure: 1. ESP32 is powered on, 2. Bluetooth is advertising, 3. Device name is correct.');
                 } else if (error.name === 'SecurityError') {
                     statusDiv.textContent = 'Permission denied';
                     showError('Bluetooth permission denied. Please allow Bluetooth access in your browser.');
