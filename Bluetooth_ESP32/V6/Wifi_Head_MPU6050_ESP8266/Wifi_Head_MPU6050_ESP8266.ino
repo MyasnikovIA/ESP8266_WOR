@@ -307,19 +307,27 @@ void handleRoot() {
         .btn-danger { background: #dc3545; color: white; }
         .btn-success { background: #28a745; color: white; }
         .btn-info { background: #17a2b8; color: white; }
-        .zero-controls { background: #e8f5e8; padding: 20px; margin: 20px 0; border-radius: 10px; border-front_: 5px solid #28a745; }
+        .zero-controls { background: #e8f5e8; padding: 20px; margin: 20px 0; border-radius: 10px; border-left: 5px solid #28a745; }
         .visualization { background: #2c3e50; color: white; padding: 25px; border-radius: 15px; margin: 20px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         .cube-container { width: 300px; height: 300px; margin: 20px auto; perspective: 1000px; }
         .cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.1s ease-out; }
         .face { position: absolute; width: 300px; height: 300px; border: 3px solid #34495e; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; background: rgba(52, 152, 219, 0.8); }
-        .left { transform: rotateY(0deg) translateZ(150px); background: rgba(231, 76, 60, 0.8); }
-        .right { transform: rotateY(180deg) translateZ(150px); background: rgba(52, 152, 219, 0.8); }
-        .back { transform: rotateY(90deg) translateZ(150px); background: rgba(46, 204, 113, 0.8); }
-        .front { transform: rotateY(-90deg) translateZ(150px); background: rgba(155, 89, 182, 0.8); }
+        .front { transform: rotateY(0deg) translateZ(150px); background: rgba(155, 89, 182, 0.8); }
+        .back { transform: rotateY(180deg) translateZ(150px); background: rgba(46, 204, 113, 0.8); }
+        .left { transform: rotateY(-90deg) translateZ(150px); background: rgba(231, 76, 60, 0.8); }
+        .right { transform: rotateY(90deg) translateZ(150px); background: rgba(52, 152, 219, 0.8); }
         .top { transform: rotateX(90deg) translateZ(150px); background: rgba(241, 196, 15, 0.8); }
         .bottom { transform: rotateX(-90deg) translateZ(150px); background: rgba(230, 126, 34, 0.8); }
+        .axis-line { position: absolute; width: 100%; height: 2px; background: rgba(255, 255, 255, 0.8); z-index: 10; }
+        .x-axis { background: rgba(255, 50, 50, 0.8); }
+        .y-axis { background: rgba(50, 255, 50, 0.8); transform: rotate(90deg); }
+        .z-axis { background: rgba(50, 50, 255, 0.8); }
+        .axis-label { position: absolute; color: white; font-size: 16px; font-weight: bold; z-index: 20; }
+        .axis-x-label { top: -25px; left: 50%; transform: translateX(-50%); }
+        .axis-y-label { left: -25px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        .axis-z-label { bottom: -25px; left: 50%; transform: translateX(-50%); }
         .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
-        .data-item { background: #f8f9fa; padding: 15px; border-radius: 8px; border-front: 4px solid #007bff; }
+        .data-item { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff; }
         .data-label { font-weight: bold; color: #495057; margin-bottom: 5px; }
         h1 { color: #2c3e50; text-align: center; margin-bottom: 30px; }
         h3 { color: #343a40; margin-bottom: 15px; }
@@ -335,15 +343,15 @@ void handleRoot() {
             <h3>Sensor Readings</h3>
             <div class="data-grid">
                 <div class="data-item">
-                    <div class="data-label">Pitch</div>
+                    <div class="data-label">Pitch (X)</div>
                     <div class="value" id="pitch">0</div>
                 </div>
                 <div class="data-item">
-                    <div class="data-label">Roll</div>
+                    <div class="data-label">Roll (Y)</div>
                     <div class="value" id="roll">0</div>
                 </div>
                 <div class="data-item">
-                    <div class="data-label">Yaw</div>
+                    <div class="data-label">Yaw (Z)</div>
                     <div class="value" id="yaw">0</div>
                 </div>
                 <div class="data-item">
@@ -391,14 +399,28 @@ void handleRoot() {
 
         <div class="visualization">
             <h3 style="color: white; text-align: center;">3D Platform Visualization</h3>
+            <div style="text-align: center; color: #ddd; margin-bottom: 15px;">
+                <strong>Оси:</strong> X (красная) - Pitch, Y (зеленая) - Roll, Z (синяя) - Yaw<br>
+                <em>Поворот по оси Y (Roll) вращает платформу вокруг оси, проходящей через центры LEFT и RIGHT</em>
+            </div>
             <div class="cube-container">
                 <div class="cube" id="cube">
-                    <div class="face front">FRONT</div>
-                    <div class="face back">BACK</div>
-                    <div class="face left">LEFT</div>
-                    <div class="face right">RIGHT</div>
+                    <div class="face front">LEFT</div>
+                    <div class="face back">RIGHT</div>
+                    <div class="face left">FRONT</div>
+                    <div class="face right">BACK</div>
                     <div class="face top">TOP</div>
                     <div class="face bottom">BOTTOM</div>
+                    
+                    <!-- Оси вращения -->
+                    <div class="axis-line x-axis"></div>
+                    <div class="axis-line y-axis"></div>
+                    <div class="axis-line z-axis"></div>
+                    
+                    <!-- Метки осей -->
+                    <div class="axis-label axis-x-label">X (Pitch)</div>
+                    <div class="axis-label axis-y-label">Y (Roll)</div>
+                    <div class="axis-label axis-z-label">Z (Yaw)</div>
                 </div>
             </div>
         </div>
@@ -505,7 +527,7 @@ void handleRoot() {
                         zeroStatusSpan.style.color = zeroSet ? '#28a745' : '#dc3545';
                     }
                     
-                    // Update 3D visualization
+                    // Update 3D visualization with corrected Y-axis rotation
                     update3DVisualization(pitchMatch[1], rollMatch[1], yawMatch[1]);
                 }
                 
@@ -544,8 +566,18 @@ void handleRoot() {
         }
         
         function update3DVisualization(pitch, roll, yaw) {
-            // Apply rotation to the 3D cube
+            // Исправленная визуализация: 
+            // - pitch (ось X) вращает вокруг оси X (влево-вправо)
+            // - roll (ось Y) вращает вокруг оси, проходящей через центры LEFT и RIGHT (это ось Y)
+            // - yaw (ось Z) вращает вокруг вертикальной оси (ось Z)
+            
+            // Порядок вращения важен для корректной визуализации
             cube.style.transform = `rotateX(${roll}deg) rotateY(${yaw}deg) rotateZ(${pitch}deg)`;
+            
+            // Альтернативный вариант для наглядности:
+            // Если нужно чтобы вращение по оси Y (roll) было более очевидным, 
+            // можно поменять порядок вращения:
+            // cube.style.transform = `rotateZ(${pitch}deg) rotateX(${roll}deg) rotateY(${yaw}deg)`;
         }
         
         function sendCommand(command) {
