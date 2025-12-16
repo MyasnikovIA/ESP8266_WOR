@@ -69,6 +69,18 @@ int history_index = 0;
 // Переменные для определения адреса
 uint8_t mpu_address = 0x68;
 
+// Для компенсации дрейфа по всем осям
+float roll_drift_accumulator = 0;
+float pitch_drift_accumulator = 0;
+float yaw_drift_accumulator = 0;
+float roll_drift_correction = 0;
+float pitch_drift_correction = 0;
+float yaw_drift_correction = 0;
+unsigned long last_still_check = 0;
+const unsigned long STILL_CHECK_INTERVAL = 1000;
+const float DRIFT_COMPENSATION_RATE = 0.001; // Скорость компенсации дрейфа
+const float DRIFT_THRESHOLD = 0.05; // Порог для обнаружения дрейфа (град/сек)
+
 // Прототипы функций
 void initBLE();
 String processCommand(String command);
@@ -85,6 +97,8 @@ void saveZeroPoint();
 void checkAndCorrectDrift();
 void scanI2C();
 void setupMPU();
+void handleSerialCommands();
+void compensateAllAxisDrift();
 
 // Класс для обработки событий BLE сервера
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -105,13 +119,15 @@ class MyServerCallbacks: public BLEServerCallbacks {
 // Класс для обработки команд через BLE
 class MyCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pCharacteristic) {
-      // Получаем значение как std::string и конвертируем в String
-      std::string stdValue = pCharacteristic->getValue();
+      // Получаем значение как строку
       String value = "";
+      
+      // В ESP32 BLE getValue() возвращает std::string
+      std::string stdValue = pCharacteristic->getValue();
       
       // Конвертируем std::string в Arduino String
       for (int i = 0; i < stdValue.length(); i++) {
-        value += stdValue[i];
+        value += (char)stdValue[i];
       }
       
       if (value.length() > 0) {
@@ -159,6 +175,10 @@ void setup() {
   Serial.println("  't' - сканировать I2C шину");
   Serial.println("  'b' - вкл/выкл BLE");
   Serial.println("  'h' - показать это меню");
+  Serial.println("  'y' - сбросить дрейф по всем осям");
+  Serial.println("  'x' - сбросить дрейф Roll (X)");
+  Serial.println("  'p' - сбросить дрейф Pitch (Y)");
+  Serial.println("  'w' - сбросить дрейф Yaw (Z)");
 
   // Инициализация энергонезависимой памяти
   preferences.begin("mpu6050", false);
@@ -260,6 +280,7 @@ void setup() {
   
   last_time = millis();
   last_ble_update = millis();
+  last_still_check = millis();
 }
 
 void loop() {
@@ -306,17 +327,20 @@ void loop() {
   filtered_pitch = ALPHA * avg_pitch + (1 - ALPHA) * filtered_pitch;
   filtered_yaw = ALPHA * avg_yaw + (1 - ALPHA) * filtered_yaw;
   
+  // Компенсация дрейфа по всем осям
+  compensateAllAxisDrift();
+  
   // Применение нулевой точки
   float roll_display, pitch_display, yaw_display;
   
   if (zero_point_set) {
-    roll_display = filtered_roll - zero_point.roll_zero;
-    pitch_display = filtered_pitch - zero_point.pitch_zero;
-    yaw_display = filtered_yaw - zero_point.yaw_zero;
+    roll_display = filtered_roll - zero_point.roll_zero + roll_drift_correction;
+    pitch_display = filtered_pitch - zero_point.pitch_zero + pitch_drift_correction;
+    yaw_display = filtered_yaw - zero_point.yaw_zero + yaw_drift_correction;
   } else {
-    roll_display = filtered_roll;
-    pitch_display = filtered_pitch;
-    yaw_display = filtered_yaw;
+    roll_display = filtered_roll + roll_drift_correction;
+    pitch_display = filtered_pitch + pitch_drift_correction;
+    yaw_display = filtered_yaw + yaw_drift_correction;
   }
   
   // Формируем строку с данными
@@ -348,6 +372,49 @@ void loop() {
   handleSerialCommands();
   
   delay(20); // 50 Гц обновление
+}
+
+// Компенсация дрейфа по всем осям
+void compensateAllAxisDrift() {
+  unsigned long current_time = millis();
+  
+  // Проверяем каждую секунду, не движется ли устройство
+  if (current_time - last_still_check >= STILL_CHECK_INTERVAL) {
+    float gyroX = mpu.getGyroX();
+    float gyroY = mpu.getGyroY();
+    float gyroZ = mpu.getGyroZ();
+    
+    // Если устройство неподвижно (угловые скорости малы)
+    if (abs(gyroX) < DRIFT_THRESHOLD && abs(gyroY) < DRIFT_THRESHOLD && abs(gyroZ) < DRIFT_THRESHOLD) {
+      // Аккумулируем дрейф по всем осям
+      roll_drift_accumulator += gyroX * (STILL_CHECK_INTERVAL / 1000.0);
+      pitch_drift_accumulator += gyroY * (STILL_CHECK_INTERVAL / 1000.0);
+      yaw_drift_accumulator += gyroZ * (STILL_CHECK_INTERVAL / 1000.0);
+      
+      // Если накопилось достаточно дрейфа, применяем коррекцию
+      if (abs(roll_drift_accumulator) > DRIFT_THRESHOLD) {
+        roll_drift_correction -= roll_drift_accumulator * DRIFT_COMPENSATION_RATE;
+        roll_drift_accumulator *= 0.9; // Частично сбрасываем аккумулятор
+      }
+      
+      if (abs(pitch_drift_accumulator) > DRIFT_THRESHOLD) {
+        pitch_drift_correction -= pitch_drift_accumulator * DRIFT_COMPENSATION_RATE;
+        pitch_drift_accumulator *= 0.9;
+      }
+      
+      if (abs(yaw_drift_accumulator) > DRIFT_THRESHOLD) {
+        yaw_drift_correction -= yaw_drift_accumulator * DRIFT_COMPENSATION_RATE;
+        yaw_drift_accumulator *= 0.9;
+      }
+    } else {
+      // Если устройство движется, сбрасываем аккумуляторы дрейфа
+      roll_drift_accumulator *= 0.5;
+      pitch_drift_accumulator *= 0.5;
+      yaw_drift_accumulator *= 0.5;
+    }
+    
+    last_still_check = current_time;
+  }
 }
 
 // Инициализация BLE
@@ -448,7 +515,7 @@ String processCommand(String command) {
     }
   }
   else if (command == "H" || command == "HELP") {
-    return "Commands: C(calibrate), Z(zero), R(reset), A(auto), S(settings), D(data), I(info), B(ble toggle), H(help), STATUS, ANGLE";
+    return "Commands: C(calibrate), Z(zero), R(reset), A(auto), S(settings), D(data), I(info), B(ble toggle), H(help), STATUS, ANGLE, Y(reset all drift), X(reset roll drift), P(reset pitch drift), W(reset yaw drift)";
   }
   else if (command == "STATUS") {
     String status = "MPU6050: ";
@@ -457,17 +524,55 @@ String processCommand(String command) {
     status += bleDeviceConnected ? "Connected" : "Disconnected";
     status += ", Zero: ";
     status += zero_point_set ? "Set" : "Not set";
+    status += ", Roll Drift: ";
+    status += String(roll_drift_correction, 3);
+    status += ", Pitch Drift: ";
+    status += String(pitch_drift_correction, 3);
+    status += ", Yaw Drift: ";
+    status += String(yaw_drift_correction, 3);
     return status;
   }
   else if (command == "ANGLE") {
     if (mpu_initialized) {
       mpu.update();
-      return "Current angles - Roll: " + String(mpu.getAngleX(), 2) + 
-             ", Pitch: " + String(mpu.getAngleY(), 2) + 
-             ", Yaw: " + String(mpu.getAngleZ(), 2);
+      float roll_display = mpu.getAngleX() + roll_drift_correction;
+      float pitch_display = mpu.getAngleY() + pitch_drift_correction;
+      float yaw_display = mpu.getAngleZ() + yaw_drift_correction;
+      
+      return "Current angles - Roll: " + String(roll_display, 2) + 
+             ", Pitch: " + String(pitch_display, 2) + 
+             ", Yaw: " + String(yaw_display, 2);
     } else {
       return "MPU6050 not connected";
     }
+  }
+  else if (command == "Y" || command == "RESETDRIFT") {
+    // Сброс компенсации дрейфа по всем осям
+    roll_drift_correction = 0;
+    pitch_drift_correction = 0;
+    yaw_drift_correction = 0;
+    roll_drift_accumulator = 0;
+    pitch_drift_accumulator = 0;
+    yaw_drift_accumulator = 0;
+    return "All axis drift compensation reset";
+  }
+  else if (command == "X" || command == "RESETROLL") {
+    // Сброс компенсации дрейфа Roll
+    roll_drift_correction = 0;
+    roll_drift_accumulator = 0;
+    return "Roll (X) drift compensation reset";
+  }
+  else if (command == "P" || command == "RESETPITCH") {
+    // Сброс компенсации дрейфа Pitch
+    pitch_drift_correction = 0;
+    pitch_drift_accumulator = 0;
+    return "Pitch (Y) drift compensation reset";
+  }
+  else if (command == "W" || command == "RESETYAW") {
+    // Сброс компенсации дрейфа Yaw
+    yaw_drift_correction = 0;
+    yaw_drift_accumulator = 0;
+    return "Yaw (Z) drift compensation reset";
   }
   else {
     return "Unknown command. Send H for help";
@@ -501,6 +606,12 @@ String getSettingsString() {
   settings += bleEnabled ? "ON" : "OFF";
   settings += ", BLE Connected=";
   settings += bleDeviceConnected ? "YES" : "NO";
+  settings += ", Roll Drift=";
+  settings += String(roll_drift_correction, 3);
+  settings += ", Pitch Drift=";
+  settings += String(pitch_drift_correction, 3);
+  settings += ", Yaw Drift=";
+  settings += String(yaw_drift_correction, 3);
   return settings;
 }
 
@@ -513,9 +624,12 @@ String getRawDataString() {
   data += "Roll=" + String(mpu.getAngleX(), 2);
   data += ", Pitch=" + String(mpu.getAngleY(), 2);
   data += ", Yaw=" + String(mpu.getAngleZ(), 2);
-  data += ", GX=" + String(mpu.getGyroX(), 2);
-  data += ", GY=" + String(mpu.getGyroY(), 2);
-  data += ", GZ=" + String(mpu.getGyroZ(), 2);
+  data += ", RollCorr=" + String(roll_drift_correction, 3);
+  data += ", PitchCorr=" + String(pitch_drift_correction, 3);
+  data += ", YawCorr=" + String(yaw_drift_correction, 3);
+  data += ", GX=" + String(mpu.getGyroX(), 3);
+  data += ", GY=" + String(mpu.getGyroY(), 3);
+  data += ", GZ=" + String(mpu.getGyroZ(), 3);
   data += ", AX=" + String(mpu.getAccX(), 3);
   data += ", AY=" + String(mpu.getAccY(), 3);
   data += ", AZ=" + String(mpu.getAccZ(), 3);
@@ -545,7 +659,15 @@ void calibrateMPU() {
   saveMPUCalibration();
   is_calibrated = true;
   
-  Serial.println("\nКалибровка завершена!");
+  // Сброс компенсации дрейфа после калибровки
+  roll_drift_correction = 0;
+  pitch_drift_correction = 0;
+  yaw_drift_correction = 0;
+  roll_drift_accumulator = 0;
+  pitch_drift_accumulator = 0;
+  yaw_drift_accumulator = 0;
+  
+  Serial.println("\nКалибровка завершена! Дрейф по всем осям сброшен.");
 }
 
 void saveMPUCalibration() {
@@ -566,14 +688,20 @@ void setZeroPoint() {
   
   mpu.update();
   
-  zero_point.roll_zero = mpu.getAngleX();
-  zero_point.pitch_zero = mpu.getAngleY();
-  zero_point.yaw_zero = mpu.getAngleZ();
+  zero_point.roll_zero = mpu.getAngleX() + roll_drift_correction; // Учитываем текущую коррекцию
+  zero_point.pitch_zero = mpu.getAngleY() + pitch_drift_correction;
+  zero_point.yaw_zero = mpu.getAngleZ() + yaw_drift_correction;
   
   zero_point_set = true;
   saveZeroPoint();
   
   Serial.println("\nНулевая точка установлена!");
+  Serial.print("Roll с коррекцией дрейфа: ");
+  Serial.println(zero_point.roll_zero, 2);
+  Serial.print("Pitch с коррекцией дрейфа: ");
+  Serial.println(zero_point.pitch_zero, 2);
+  Serial.print("Yaw с коррекцией дрейфа: ");
+  Serial.println(zero_point.yaw_zero, 2);
 }
 
 void resetZeroPoint() {
@@ -589,8 +717,11 @@ void checkAndCorrectDrift() {
   float gyroY = mpu.getGyroY();
   float gyroZ = mpu.getGyroZ();
   
-  if (abs(gyroX) < 0.5 && abs(gyroY) < 0.5 && abs(gyroZ) < 0.5) {
-    // Медленная коррекция дрейфа
+  // Дополнительная медленная коррекция если устройство неподвижно
+  if (abs(gyroX) < DRIFT_THRESHOLD && abs(gyroY) < DRIFT_THRESHOLD && abs(gyroZ) < DRIFT_THRESHOLD) {
+    filtered_roll *= 0.999;
+    filtered_pitch *= 0.999;
+    filtered_yaw *= 0.999;
   }
 }
 
