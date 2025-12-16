@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Head Tracker - MPU6050 BLE Control</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #3498db;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.2em;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 2px solid #28a745;
+        }
+        
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 2px solid #dc3545;
+        }
+        
+        .status.scanning {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 2px solid #17a2b8;
+        }
+        
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 25px 0;
+            justify-content: center;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11);
+        }
+        
+        .btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 7px 14px rgba(50, 50, 93, 0.2);
+        }
+        
+        .btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            opacity: 0.6;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12 0%, #d35400 100%);
+        }
+        
+        .btn-purple {
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin: 30px 0;
+        }
+        
+        .card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        
+        .card h3 {
+            color: #34495e;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .input-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #ced4da;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+            background: white;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+        }
+        
+        .quick-commands {
+            margin: 20px 0;
+        }
+        
+        .quick-btn {
+            flex: 1;
+            min-width: 140px;
+            padding: 12px;
+        }
+        
+        .data-display {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            border: 2px solid #e9ecef;
+        }
+        
+        .data-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .data-item:last-child {
+            border-bottom: none;
+        }
+        
+        .data-label {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .data-value {
+            color: #3498db;
+            font-weight: bold;
+        }
+        
+        .angle-value {
+            font-size: 1.4em;
+            color: #e74c3c;
+        }
+        
+        .log-container {
+            margin-top: 30px;
+        }
+        
+        .log-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #495057;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1em;
+        }
+        
+        .log {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            background: white;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+        }
+        
+        .log-entry {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background-color 0.2s;
+        }
+        
+        .log-entry:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-time {
+            color: #7f8c8d;
+            font-size: 12px;
+            min-width: 80px;
+        }
+        
+        .log-message {
+            flex: 1;
+            word-break: break-word;
+        }
+        
+        .log-sent {
+            color: #3498db;
+        }
+        
+        .log-received {
+            color: #2ecc71;
+        }
+        
+        .log-error {
+            color: #e74c3c;
+        }
+        
+        .log-info {
+            color: #f39c12;
+        }
+        
+        .log-data {
+            color: #9b59b6;
+        }
+        
+        .device-info {
+            background: linear-gradient(135deg, #e8f4f8 0%, #d4e7f0 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid #3498db;
+        }
+        
+        .device-details {
+            font-family: monospace;
+            font-size: 15px;
+            line-height: 1.8;
+        }
+        
+        .clear-btn {
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+        }
+        
+        .visualization {
+            position: relative;
+            height: 200px;
+            background: white;
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .head-model {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background: #3498db;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .axis-label {
+            position: absolute;
+            font-weight: bold;
+            color: #666;
+        }
+        
+        .axis-x { top: 10px; left: 50%; transform: translateX(-50%); }
+        .axis-y { top: 50%; right: 10px; transform: translateY(-50%); }
+        .axis-z { top: 50%; left: 10px; transform: translateY(-50%); }
+        
+        .angle-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(52, 152, 219, 0.1);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #3498db;
+            font-weight: bold;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+            
+            .container {
+                padding: 20px;
+            }
+            
+            .visualization {
+                height: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <span>🎮</span> VR Head Tracker - MPU6050 BLE Control
+        </h1>
+        
+        <div id="status" class="status disconnected">
+            🔌 Отключено от VR Head Tracker
+        </div>
+        
+        <div class="device-info" id="deviceInfo" style="display: none;">
+            <h3>📱 Информация об устройстве:</h3>
+            <div class="device-details" id="deviceDetails"></div>
+        </div>
+        
+        <div class="btn-group">
+            <button id="scanBtn" class="btn">
+                <span>🔍</span> Сканировать устройства
+            </button>
+            <button id="connectBtn" class="btn btn-success" disabled>
+                <span>📱</span> Подключиться
+            </button>
+            <button id="disconnectBtn" class="btn btn-danger" disabled>
+                <span>❌</span> Отключиться
+            </button>
+            <button id="autoConnectBtn" class="btn btn-warning">
+                <span>🔄</span> Автоподключение: ВКЛ
+            </button>
+        </div>
+        
+        <div class="dashboard">
+            <div class="card">
+                <h3><span>⚙️</span> Управление трекером</h3>
+                
+                <div class="input-group">
+                    <label for="commandInput"><span>💭</span> Команда:</label>
+                    <input type="text" id="commandInput" 
+                           placeholder="Введите команду (C, Z, R, S, D, H...)"
+                           autocomplete="off">
+                </div>
+                
+                <div class="btn-group">
+                    <button id="sendBtn" class="btn" disabled>
+                        <span>📤</span> Отправить команду
+                    </button>
+                    <button id="clearLogBtn" class="btn clear-btn">
+                        <span>🧹</span> Очистить лог
+                    </button>
+                </div>
+                
+                <div class="quick-commands">
+                    <h3><span>🚀</span> Быстрые команды:</h3>
+                    <div class="btn-group">
+                        <button class="btn quick-btn btn-success" data-command="C">
+                            <span>🎯</span> Калибровка
+                        </button>
+                        <button class="btn quick-btn btn-warning" data-command="Z">
+                            <span>📍</span> Нулевая точка
+                        </button>
+                        <button class="btn quick-btn" data-command="S">
+                            <span>⚙️</span> Настройки
+                        </button>
+                        <button class="btn quick-btn" data-command="D">
+                            <span>📊</span> Данные
+                        </button>
+                        <button class="btn quick-btn" data-command="STATUS">
+                            <span>📈</span> Статус
+                        </button>
+                        <button class="btn quick-btn" data-command="ANGLE">
+                            <span>📐</span> Углы
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3><span>📊</span> Данные сенсора</h3>
+                
+                <div class="data-display">
+                    <div class="data-item">
+                        <span class="data-label">Roll (X):</span>
+                        <span id="rollValue" class="data-value angle-value">0.00°</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Pitch (Y):</span>
+                        <span id="pitchValue" class="data-value angle-value">0.00°</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Yaw (Z):</span>
+                        <span id="yawValue" class="data-value angle-value">0.00°</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Температура:</span>
+                        <span id="tempValue" class="data-value">0.0°C</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">FPS:</span>
+                        <span id="fpsValue" class="data-value">0</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Последнее обновление:</span>
+                        <span id="updateTime" class="data-value">-</span>
+                    </div>
+                </div>
+                
+                <div class="visualization">
+                    <div class="axis-label axis-x">Pitch</div>
+                    <div class="axis-label axis-y">Roll</div>
+                    <div class="axis-label axis-z">Yaw</div>
+                    <div class="head-model" id="headModel"></div>
+                    <div class="angle-indicator" id="angleIndicator">X:0° Y:0° Z:0°</div>
+                </div>
+                
+                <div class="btn-group">
+                    <button id="resetViewBtn" class="btn btn-purple">
+                        <span>🔄</span> Сбросить вид
+                    </button>
+                    <button id="freezeBtn" class="btn">
+                        <span>⏸️</span> Пауза
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3><span>📝</span> Команды трекера</h3>
+            <div class="data-display">
+                <div class="data-item"><span class="data-label">C или CALIBRATE</span><span class="data-value">- Калибровка датчика</span></div>
+                <div class="data-item"><span class="data-label">Z или ZERO</span><span class="data-value">- Установить нулевую точку</span></div>
+                <div class="data-item"><span class="data-label">R или RESET</span><span class="data-value">- Сбросить нулевую точку</span></div>
+                <div class="data-item"><span class="data-label">A или AUTO</span><span class="data-value">- Вкл/выкл авто-калибровку</span></div>
+                <div class="data-item"><span class="data-label">S или SETTINGS</span><span class="data-value">- Показать настройки</span></div>
+                <div class="data-item"><span class="data-label">D или DATA</span><span class="data-value">- Показать сырые данные</span></div>
+                <div class="data-item"><span class="data-label">H или HELP</span><span class="data-value">- Справка по командам</span></div>
+                <div class="data-item"><span class="data-label">B или BLE</span><span class="data-value">- Вкл/выкл BLE</span></div>
+                <div class="data-item"><span class="data-label">STATUS</span><span class="data-value">- Статус подключения</span></div>
+                <div class="data-item"><span class="data-label">ANGLE</span><span class="data-value">- Текущие углы</span></div>
+            </div>
+        </div>
+        
+        <div class="log-container">
+            <div class="log-title">
+                <span>📝 Журнал событий и данных:</span>
+                <span id="logCount">0 сообщений</span>
+            </div>
+            <div class="log" id="logContent">
+                <!-- Лог будет добавляться здесь -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Конфигурация BLE
+        const BLE_CONFIG = {
+            SERVICE_UUID: '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
+            CHARACTERISTIC_UUID: 'beb5483e-36e1-4688-b7f5-ea07361b26a8',
+            DEVICE_NAME: 'VR-HeadTracker-MPU6050',
+            DEVICE_NAME_PREFIX: 'VR-HeadTracker'
+        };
+        
+        // Состояние приложения
+        let state = {
+            device: null,
+            server: null,
+            service: null,
+            characteristic: null,
+            isConnected: false,
+            logEntries: 0,
+            autoReconnect: true,
+            isPaused: false,
+            lastAngles: { roll: 0, pitch: 0, yaw: 0 },
+            fps: 0,
+            frameCount: 0,
+            lastFpsTime: 0,
+            dataNotificationEnabled: false
+        };
+        
+        // DOM элементы
+        const elements = {
+            status: document.getElementById('status'),
+            scanBtn: document.getElementById('scanBtn'),
+            connectBtn: document.getElementById('connectBtn'),
+            disconnectBtn: document.getElementById('disconnectBtn'),
+            autoConnectBtn: document.getElementById('autoConnectBtn'),
+            commandInput: document.getElementById('commandInput'),
+            sendBtn: document.getElementById('sendBtn'),
+            clearLogBtn: document.getElementById('clearLogBtn'),
+            resetViewBtn: document.getElementById('resetViewBtn'),
+            freezeBtn: document.getElementById('freezeBtn'),
+            logContent: document.getElementById('logContent'),
+            logCount: document.getElementById('logCount'),
+            deviceInfo: document.getElementById('deviceInfo'),
+            deviceDetails: document.getElementById('deviceDetails'),
+            rollValue: document.getElementById('rollValue'),
+            pitchValue: document.getElementById('pitchValue'),
+            yawValue: document.getElementById('yawValue'),
+            tempValue: document.getElementById('tempValue'),
+            fpsValue: document.getElementById('fpsValue'),
+            updateTime: document.getElementById('updateTime'),
+            headModel: document.getElementById('headModel'),
+            angleIndicator: document.getElementById('angleIndicator')
+        };
+        
+        // Утилиты
+        const utils = {
+            getTimeString: () => {
+                const now = new Date();
+                return now.toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            },
+            
+            updateLogCount: () => {
+                elements.logCount.textContent = `${state.logEntries} сообщений`;
+            },
+            
+            parseSensorData: (dataString) => {
+                try {
+                    // Формат: ROLL:XX.XX,PITCH:XX.XX,YAW:XX.XX
+                    const parts = dataString.split(',');
+                    const data = {};
+                    
+                    parts.forEach(part => {
+                        const [key, value] = part.split(':');
+                        if (key && value) {
+                            data[key.trim()] = parseFloat(value.trim());
+                        }
+                    });
+                    
+                    return data;
+                } catch (error) {
+                    return null;
+                }
+            },
+            
+            updateAnglesDisplay: (data) => {
+                if (!state.isPaused && data) {
+                    state.lastAngles = data;
+                    
+                    // Обновление числовых значений
+                    if (data.ROLL !== undefined) {
+                        elements.rollValue.textContent = data.ROLL.toFixed(2) + '°';
+                    }
+                    if (data.PITCH !== undefined) {
+                        elements.pitchValue.textContent = data.PITCH.toFixed(2) + '°';
+                    }
+                    if (data.YAW !== undefined) {
+                        elements.yawValue.textContent = data.YAW.toFixed(2) + '°';
+                    }
+                    
+                    // Обновление времени
+                    elements.updateTime.textContent = utils.getTimeString();
+                    
+                    // Обновление FPS
+                    state.frameCount++;
+                    const now = Date.now();
+                    if (now - state.lastFpsTime >= 1000) {
+                        state.fps = state.frameCount;
+                        state.frameCount = 0;
+                        state.lastFpsTime = now;
+                        elements.fpsValue.textContent = state.fps;
+                    }
+                    
+                    // Обновление визуализации
+                    updateHeadModel(data);
+                }
+            },
+            
+            extractTemperature: (dataString) => {
+                // Поиск температуры в строке данных
+                const tempMatch = dataString.match(/Temp[:=]?([0-9.-]+)/i);
+                if (tempMatch && tempMatch[1]) {
+                    return parseFloat(tempMatch[1]).toFixed(1);
+                }
+                return null;
+            }
+        };
+        
+        // Функции логирования
+        const logger = {
+            add: (message, type = 'info') => {
+                const entry = document.createElement('div');
+                entry.className = `log-entry log-${type}`;
+                
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'log-time';
+                timeSpan.textContent = utils.getTimeString();
+                
+                const messageSpan = document.createElement('span');
+                messageSpan.className = 'log-message';
+                messageSpan.textContent = message;
+                
+                entry.appendChild(timeSpan);
+                entry.appendChild(messageSpan);
+                elements.logContent.appendChild(entry);
+                
+                // Прокрутка вниз
+                elements.logContent.scrollTop = elements.logContent.scrollHeight;
+                
+                // Обновление счетчика
+                state.logEntries++;
+                utils.updateLogCount();
+                
+                // Ограничение количества записей в логе
+                if (state.logEntries > 500) {
+                    const entries = elements.logContent.children;
+                    if (entries.length > 400) {
+                        for (let i = 0; i < 100; i++) {
+                            if (entries[0]) {
+                                elements.logContent.removeChild(entries[0]);
+                            }
+                        }
+                    }
+                }
+            },
+            
+            clear: () => {
+                elements.logContent.innerHTML = '';
+                state.logEntries = 0;
+                utils.updateLogCount();
+                logger.add('Журнал очищен', 'info');
+            },
+            
+            error: (message) => logger.add(`❌ ${message}`, 'error'),
+            info: (message) => logger.add(`ℹ️ ${message}`, 'info'),
+            sent: (message) => logger.add(`📤 ${message}`, 'sent'),
+            received: (message) => logger.add(`📥 ${message}`, 'received'),
+            data: (message) => logger.add(`📊 ${message}`, 'data')
+        };
+        
+        // Функции управления состоянием
+        const statusManager = {
+            set: (message, type) => {
+                elements.status.textContent = message;
+                elements.status.className = `status ${type}`;
+                
+                // Обновляем состояние кнопок
+                const isConnected = type === 'connected';
+                const isScanning = type === 'scanning';
+                
+                elements.scanBtn.disabled = isScanning || isConnected;
+                elements.connectBtn.disabled = !state.device || isConnected || isScanning;
+                elements.disconnectBtn.disabled = !isConnected;
+                elements.sendBtn.disabled = !isConnected;
+                elements.commandInput.disabled = !isConnected;
+                elements.freezeBtn.disabled = !isConnected;
+                elements.resetViewBtn.disabled = !isConnected;
+                
+                // Обновляем текст кнопки паузы
+                elements.freezeBtn.innerHTML = state.isPaused ? 
+                    '<span>▶️</span> Продолжить' : 
+                    '<span>⏸️</span> Пауза';
+            },
+            
+            showDeviceInfo: (device) => {
+                elements.deviceInfo.style.display = 'block';
+                elements.deviceDetails.innerHTML = `
+                    <div><strong>Имя устройства:</strong> ${device.name || 'VR-HeadTracker-MPU6050'}</div>
+                    <div><strong>ID устройства:</strong> ${device.id}</div>
+                    <div><strong>Состояние:</strong> ${state.isConnected ? 'Подключено' : 'Отключено'}</div>
+                    <div><strong>Служба BLE:</strong> ${BLE_CONFIG.SERVICE_UUID}</div>
+                    <div><strong>FPS:</strong> <span id="infoFps">0</span></div>
+                `;
+            },
+            
+            hideDeviceInfo: () => {
+                elements.deviceInfo.style.display = 'none';
+            },
+            
+            updateAutoConnect: () => {
+                const text = state.autoReconnect ? 'ВКЛ' : 'ВЫКЛ';
+                const icon = state.autoReconnect ? '✅' : '❌';
+                elements.autoConnectBtn.innerHTML = `<span>${icon}</span> Автоподключение: ${text}`;
+            }
+        };
+        
+        // Функции визуализации
+        function updateHeadModel(data) {
+            const model = elements.headModel;
+            const indicator = elements.angleIndicator;
+            
+            // Ограничиваем углы для анимации (чтобы не было слишком резких движений)
+            const maxAngle = 45; // Максимальный угол наклона для визуализации
+            
+            let roll = data.ROLL || 0;
+            let pitch = data.PITCH || 0;
+            let yaw = data.YAW || 0;
+            
+            // Нормализуем углы для визуализации
+            roll = Math.max(-maxAngle, Math.min(maxAngle, roll));
+            pitch = Math.max(-maxAngle, Math.min(maxAngle, pitch));
+            yaw = Math.max(-maxAngle, Math.min(maxAngle, yaw));
+            
+            // Применяем преобразования к модели головы
+            const transform = `translate(-50%, -50%) 
+                             rotateX(${pitch}deg) 
+                             rotateY(${roll}deg) 
+                             rotateZ(${-yaw}deg)`;
+            
+            model.style.transform = transform;
+            
+            // Обновляем индикатор углов
+            indicator.textContent = `X:${roll.toFixed(1)}° Y:${pitch.toFixed(1)}° Z:${yaw.toFixed(1)}°`;
+        }
+        
+        function resetHeadModel() {
+            elements.headModel.style.transform = 'translate(-50%, -50%)';
+            elements.angleIndicator.textContent = 'X:0° Y:0° Z:0°';
+        }
+        
+        // BLE функции
+        const ble = {
+            scan: async () => {
+                statusManager.set('🔍 Поиск VR Head Tracker...', 'scanning');
+                logger.info('Начинаю сканирование BLE устройств...');
+                
+                try {
+                    // Опции для сканирования
+                    const options = {
+                        filters: [
+                            { name: BLE_CONFIG.DEVICE_NAME },
+                            { namePrefix: BLE_CONFIG.DEVICE_NAME_PREFIX }
+                        ],
+                        optionalServices: [BLE_CONFIG.SERVICE_UUID]
+                    };
+                    
+                    // Запрос устройства
+                    state.device = await navigator.bluetooth.requestDevice(options);
+                    
+                    if (!state.device) {
+                        throw new Error('Устройство не выбрано');
+                    }
+                    
+                    logger.info(`Найдено устройство: ${state.device.name || 'VR Head Tracker'}`);
+                    statusManager.showDeviceInfo(state.device);
+                    statusManager.set(`✅ Найден: ${state.device.name || 'VR Head Tracker'}`, 'disconnected');
+                    
+                } catch (error) {
+                    logger.error(`Сканирование: ${error.message}`);
+                    statusManager.set('❌ Ошибка сканирования', 'disconnected');
+                    statusManager.hideDeviceInfo();
+                }
+            },
+            
+            connect: async () => {
+                if (!state.device) {
+                    logger.error('Сначала выберите устройство');
+                    return;
+                }
+                
+                statusManager.set('🔄 Подключение к VR Head Tracker...', 'scanning');
+                logger.info(`Подключаюсь к ${state.device.name || 'VR Head Tracker'}...`);
+                
+                try {
+                    // Подключение к GATT серверу
+                    state.server = await state.device.gatt.connect();
+                    logger.info('GATT сервер подключен');
+                    
+                    // Получение службы
+                    state.service = await state.server.getPrimaryService(BLE_CONFIG.SERVICE_UUID);
+                    logger.info(`Служба найдена: ${BLE_CONFIG.SERVICE_UUID}`);
+                    
+                    // Получение характеристики
+                    state.characteristic = await state.service.getCharacteristic(BLE_CONFIG.CHARACTERISTIC_UUID);
+                    logger.info(`Характеристика найдена: ${BLE_CONFIG.CHARACTERISTIC_UUID}`);
+                    
+                    // Включение уведомлений
+                    await state.characteristic.startNotifications();
+                    state.characteristic.addEventListener('characteristicvaluechanged', ble.handleNotifications);
+                    state.dataNotificationEnabled = true;
+                    
+                    // Чтение начального значения
+                    const initialValue = await state.characteristic.readValue();
+                    const decoder = new TextDecoder();
+                    const text = decoder.decode(initialValue);
+                    logger.received(`Начальное значение: "${text}"`);
+                    
+                    // Установка состояния подключения
+                    state.isConnected = true;
+                    statusManager.set(`✅ Подключено к: ${state.device.name || 'VR Head Tracker'}`, 'connected');
+                    logger.info('Успешно подключено к VR Head Tracker!');
+                    
+                    // Обработчик отключения
+                    state.device.addEventListener('gattserverdisconnected', ble.onDisconnected);
+                    
+                    // Фокус на поле ввода
+                    setTimeout(() => {
+                        if (state.isConnected) {
+                            elements.commandInput.focus();
+                        }
+                    }, 100);
+                    
+                } catch (error) {
+                    logger.error(`Подключение: ${error.message}`);
+                    statusManager.set('❌ Ошибка подключения', 'disconnected');
+                    state.isConnected = false;
+                    state.dataNotificationEnabled = false;
+                }
+            },
+            
+            handleNotifications: (event) => {
+                const value = event.target.value;
+                const decoder = new TextDecoder();
+                const text = decoder.decode(value);
+                
+                // Обработка данных с сенсора
+                if (text.includes('ROLL:') && text.includes('PITCH:') && text.includes('YAW:')) {
+                    const data = utils.parseSensorData(text);
+                    if (data) {
+                        utils.updateAnglesDisplay(data);
+                        // Логируем только каждую 10-ю запись для уменьшения спама
+                        if (state.frameCount % 10 === 0) {
+                            logger.data(`Данные: Roll=${data.ROLL?.toFixed(2)}°, Pitch=${data.PITCH?.toFixed(2)}°, Yaw=${data.YAW?.toFixed(2)}°`);
+                        }
+                    }
+                } else {
+                    // Это ответ на команду или другой текст
+                    logger.received(`Ответ: "${text}"`);
+                    
+                    // Проверяем наличие температуры в ответе
+                    const temp = utils.extractTemperature(text);
+                    if (temp) {
+                        elements.tempValue.textContent = temp + '°C';
+                    }
+                }
+                
+                // Обновляем FPS в информации об устройстве
+                const infoFps = document.getElementById('infoFps');
+                if (infoFps) {
+                    infoFps.textContent = state.fps;
+                }
+            },
+            
+            disconnect: async () => {
+                if (!state.device || !state.isConnected) {
+                    return;
+                }
+                
+                try {
+                    // Отключаем уведомления
+                    if (state.characteristic && state.dataNotificationEnabled) {
+                        await state.characteristic.stopNotifications();
+                        state.dataNotificationEnabled = false;
+                    }
+                    
+                    if (state.device.gatt.connected) {
+                        state.device.gatt.disconnect();
+                    }
+                    
+                    state.isConnected = false;
+                    statusManager.set('🔌 Отключено от VR Head Tracker', 'disconnected');
+                    logger.info('Отключено от VR Head Tracker');
+                    
+                    // Сбрасываем отображение данных
+                    elements.rollValue.textContent = '0.00°';
+                    elements.pitchValue.textContent = '0.00°';
+                    elements.yawValue.textContent = '0.00°';
+                    elements.fpsValue.textContent = '0';
+                    elements.updateTime.textContent = '-';
+                    resetHeadModel();
+                    
+                } catch (error) {
+                    logger.error(`Отключение: ${error.message}`);
+                }
+            },
+            
+            onDisconnected: () => {
+                state.isConnected = false;
+                state.dataNotificationEnabled = false;
+                statusManager.set('🔌 VR Head Tracker отключился', 'disconnected');
+                logger.info('VR Head Tracker отключился');
+                
+                // Сбрасываем отображение данных
+                elements.rollValue.textContent = '0.00°';
+                elements.pitchValue.textContent = '0.00°';
+                elements.yawValue.textContent = '0.00°';
+                elements.fpsValue.textContent = '0';
+                resetHeadModel();
+                
+                if (state.autoReconnect) {
+                    logger.info('Попытка переподключения через 3 секунды...');
+                    setTimeout(() => {
+                        if (!state.isConnected && state.device) {
+                            ble.connect();
+                        }
+                    }, 3000);
+                }
+            },
+            
+            sendCommand: async (command) => {
+                if (!state.isConnected || !state.characteristic) {
+                    logger.error('Не подключено к VR Head Tracker');
+                    return;
+                }
+                
+                // Очистка команды
+                command = command.trim().toUpperCase();
+                if (!command) {
+                    logger.error('Пустая команда');
+                    return;
+                }
+                
+                try {
+                    // Отправка команды
+                    const encoder = new TextEncoder();
+                    await state.characteristic.writeValue(encoder.encode(command));
+                    logger.sent(`Команда: "${command}"`);
+                    
+                    // Очистка поля ввода
+                    elements.commandInput.value = '';
+                    
+                    // Автоматический фокус обратно на поле ввода
+                    setTimeout(() => {
+                        if (state.isConnected) {
+                            elements.commandInput.focus();
+                        }
+                    }, 100);
+                    
+                } catch (error) {
+                    logger.error(`Отправка команды: ${error.message}`);
+                }
+            }
+        };
+        
+        // Настройка обработчиков событий
+        function setupEventListeners() {
+            // Кнопки управления
+            elements.scanBtn.addEventListener('click', ble.scan);
+            elements.connectBtn.addEventListener('click', ble.connect);
+            elements.disconnectBtn.addEventListener('click', ble.disconnect);
+            
+            // Автоподключение
+            elements.autoConnectBtn.addEventListener('click', () => {
+                state.autoReconnect = !state.autoReconnect;
+                statusManager.updateAutoConnect();
+                logger.info(`Автоподключение: ${state.autoReconnect ? 'ВКЛ' : 'ВЫКЛ'}`);
+            });
+            
+            // Отправка команды
+            elements.sendBtn.addEventListener('click', () => {
+                const command = elements.commandInput.value.trim();
+                if (command) {
+                    ble.sendCommand(command);
+                }
+            });
+            
+            // Очистка лога
+            elements.clearLogBtn.addEventListener('click', logger.clear);
+            
+            // Сброс вида
+            elements.resetViewBtn.addEventListener('click', resetHeadModel);
+            
+            // Пауза/продолжить
+            elements.freezeBtn.addEventListener('click', () => {
+                state.isPaused = !state.isPaused;
+                statusManager.set(
+                    state.isPaused ? '⏸️ Пауза' : '✅ Подключено к VR Head Tracker',
+                    state.isConnected ? 'connected' : 'disconnected'
+                );
+                logger.info(state.isPaused ? 'Визуализация на паузе' : 'Визуализация продолжена');
+            });
+            
+            // Быстрые команды
+            document.querySelectorAll('[data-command]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const command = button.getAttribute('data-command');
+                    ble.sendCommand(command);
+                });
+            });
+            
+            // Отправка по Enter
+            elements.commandInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const command = elements.commandInput.value.trim();
+                    if (command) {
+                        ble.sendCommand(command);
+                    }
+                }
+            });
+        }
+        
+        // Инициализация приложения
+        function initApp() {
+            logger.info('Веб-интерфейс VR Head Tracker загружен');
+            
+            // Проверка поддержки Web Bluetooth
+            if (!navigator.bluetooth) {
+                logger.error('Web Bluetooth API не поддерживается в этом браузере');
+                logger.error('Используйте Chrome/Edge версии 56+ на Windows/Mac/Android');
+                elements.scanBtn.disabled = true;
+                elements.connectBtn.disabled = true;
+                elements.autoConnectBtn.disabled = true;
+                statusManager.set('❌ Браузер не поддерживает Web Bluetooth', 'disconnected');
+                return;
+            }
+            
+            logger.info('Готов к работе. Нажмите "Сканировать устройства"');
+            logger.info('Имя устройства: VR-HeadTracker-MPU6050');
+            logger.info('Используйте команды: C, Z, R, S, D, H, STATUS, ANGLE');
+            
+            // Инициализация FPS счетчика
+            state.lastFpsTime = Date.now();
+            
+            // Установка обработчиков событий
+            setupEventListeners();
+        }
+        
+        // Запуск приложения при загрузке страницы
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
