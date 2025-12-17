@@ -1,6 +1,5 @@
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
+#include <MPU6050_light.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -22,7 +21,6 @@ bool oldDeviceConnected = false;
 // Sensor data
 float pitch = 0, roll = 0, yaw = 0;
 float lastSentPitch = 0, lastSentRoll = 0, lastSentYaw = 0;
-float gyroOffsetX = 0, gyroOffsetY = 0, gyroOffsetZ = 0;
 bool calibrated = false;
 unsigned long lastTime = 0;
 
@@ -42,7 +40,7 @@ const float CHANGE_THRESHOLD = 1.0;
 
 // Переменные для хранения найденного адреса MPU6050
 uint8_t mpuAddress = 0;
-Adafruit_MPU6050 mpu;
+MPU6050 mpu(Wire);
 
 // Установка относительного нуля
 void setZeroPoint() {
@@ -150,7 +148,6 @@ bool scanAndFindMPU6050() {
   Serial.println("Scanning I2C bus for MPU6050...");
   Serial.println("Scanning addresses 1-127...");
   
-  // Переинициализируем I2C
   Wire.begin();
   delay(100);
   
@@ -241,12 +238,7 @@ bool checkMPU6050Directly(uint8_t address) {
   // Попробуем прочитать регистр WHO_AM_I (0x75)
   Wire.beginTransmission(address);
   Wire.write(0x75); // WHO_AM_I register
-  if (Wire.endTransmission(false) != 0) {
-    Serial.println("  ❌ Error writing to device");
-    return false;
-  }
-  
-  delay(10);
+  Wire.endTransmission(false);
   
   Wire.requestFrom(address, (uint8_t)1);
   if (Wire.available()) {
@@ -255,12 +247,12 @@ bool checkMPU6050Directly(uint8_t address) {
     if (whoami < 16) Serial.print("0");
     Serial.println(whoami, HEX);
     
-    // Для MPU6050 WHO_AM_I должен быть 0x68 или 0x71 в некоторых версиях
-    if (whoami == 0x68 || whoami == 0x71) {
+    // Для MPU6050 WHO_AM_I должен быть 0x68
+    if (whoami == 0x68) {
       Serial.println("  ✅ Valid MPU6050 detected!");
       return true;
     } else {
-      Serial.print("  ❌ Unexpected WHO_AM_I value. Expected 0x68 or 0x71, got 0x");
+      Serial.print("  ❌ Unexpected WHO_AM_I value. Expected 0x68, got 0x");
       if (whoami < 16) Serial.print("0");
       Serial.println(whoami, HEX);
       return false;
@@ -271,12 +263,12 @@ bool checkMPU6050Directly(uint8_t address) {
   }
 }
 
-// Альтернативная инициализация MPU6050
-bool initMPU6050Alternative() {
+// Инициализация MPU6050 с библиотекой MPU6050_light
+bool initMPU6050WithLightLibrary() {
   Serial.print("Initializing MPU6050 at address 0x");
   if (mpuAddress < 16) Serial.print("0");
   Serial.print(mpuAddress, HEX);
-  Serial.println(" using alternative method...");
+  Serial.println(" using MPU6050_light library...");
   
   // Сначала проверим через прямое обращение
   if (!checkMPU6050Directly(mpuAddress)) {
@@ -284,103 +276,37 @@ bool initMPU6050Alternative() {
     return false;
   }
   
-  // Пробуем несколько раз инициализировать
-  for (int attempt = 1; attempt <= 5; attempt++) {
-    Serial.print("Initialization attempt ");
-    Serial.print(attempt);
-    Serial.println("...");
-    
-    // Пробуем инициализировать с указанием адреса
-    if (mpu.begin(mpuAddress)) {
-      Serial.println("✅ MPU6050 initialized successfully!");
-      
-      // Настройка MPU6050
-      mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
-      mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-      mpu.setFilterBandwidth(MPU6050_BAND_10_HZ);
-      
-      // Проверяем, что настройки применились
-      delay(100);
-      
-      // Читаем данные для проверки
-      sensors_event_t a, g, temp;
-      if (mpu.getEvent(&a, &g, &temp)) {
-        Serial.println("✅ MPU6050 is reading data correctly!");
-        
-        // Выводим информацию о настройках
-        Serial.println("MPU6050 Configuration:");
-        Serial.print("  Accelerometer range: ");
-        switch (mpu.getAccelerometerRange()) {
-          case MPU6050_RANGE_2_G: Serial.println("±2 G"); break;
-          case MPU6050_RANGE_4_G: Serial.println("±4 G"); break;
-          case MPU6050_RANGE_8_G: Serial.println("±8 G"); break;
-          case MPU6050_RANGE_16_G: Serial.println("±16 G"); break;
-        }
-        
-        Serial.print("  Gyro range: ");
-        switch (mpu.getGyroRange()) {
-          case MPU6050_RANGE_250_DEG: Serial.println("±250 deg/s"); break;
-          case MPU6050_RANGE_500_DEG: Serial.println("±500 deg/s"); break;
-          case MPU6050_RANGE_1000_DEG: Serial.println("±1000 deg/s"); break;
-          case MPU6050_RANGE_2000_DEG: Serial.println("±2000 deg/s"); break;
-        }
-        
-        Serial.print("  Filter bandwidth: ");
-        switch (mpu.getFilterBandwidth()) {
-          case MPU6050_BAND_260_HZ: Serial.println("260 Hz"); break;
-          case MPU6050_BAND_184_HZ: Serial.println("184 Hz"); break;
-          case MPU6050_BAND_94_HZ: Serial.println("94 Hz"); break;
-          case MPU6050_BAND_44_HZ: Serial.println("44 Hz"); break;
-          case MPU6050_BAND_21_HZ: Serial.println("21 Hz"); break;
-          case MPU6050_BAND_10_HZ: Serial.println("10 Hz"); break;
-          case MPU6050_BAND_5_HZ: Serial.println("5 Hz"); break;
-        }
-        
-        return true;
-      } else {
-        Serial.println("❌ MPU6050 initialized but not reading data");
-      }
-    }
-    
-    delay(500);
+  // Инициализируем MPU6050 с найденным адресом
+  byte status = mpu.begin(mpuAddress);
+  
+  if (status != 0) {
+    Serial.print("❌ MPU6050 initialization failed! Error code: ");
+    Serial.println(status);
+    return false;
   }
   
-  Serial.println("❌ All initialization attempts failed!");
+  Serial.println("✅ MPU6050 initialized successfully!");
   
-  // Пробуем без указания адреса
-  Serial.println("Trying initialization without address...");
-  if (mpu.begin()) {
-    Serial.println("✅ MPU6050 initialized without address!");
-    return true;
-  }
+  // Даем время на стабилизацию
+  delay(1000);
   
-  return false;
-}
-
-// Калибровка датчика
-void calibrateSensor() {
+  // Калибруем гироскоп и акселерометр
   Serial.println("Calibrating MPU6050...");
-  float sumX = 0, sumY = 0, sumZ = 0;
-  
-  for (int i = 0; i < 500; i++) {
-    sensors_event_t a, g, temp;
-    if (mpu.getEvent(&a, &g, &temp)) {
-      sumX += g.gyro.x;
-      sumY += g.gyro.y;
-      sumZ += g.gyro.z;
-    }
-    delay(2);
-  }
-  
-  gyroOffsetX = sumX / 500;
-  gyroOffsetY = sumY / 500;
-  gyroOffsetZ = sumZ / 500;
+  mpu.calcOffsets();
   calibrated = true;
   
-  Serial.println("Calibration complete");
-  Serial.print("Offsets - X: "); Serial.print(gyroOffsetX, 6);
-  Serial.print(" Y: "); Serial.print(gyroOffsetY, 6);
-  Serial.print(" Z: "); Serial.println(gyroOffsetZ, 6);
+  Serial.println("Calibration complete!");
+  
+  // Выводим информацию о калибровке
+  Serial.println("Calibration offsets:");
+  Serial.print("  Accel X: "); Serial.println(mpu.getAccXoffset());
+  Serial.print("  Accel Y: "); Serial.println(mpu.getAccYoffset());
+  Serial.print("  Accel Z: "); Serial.println(mpu.getAccZoffset());
+  Serial.print("  Gyro X: "); Serial.println(mpu.getGyroXoffset());
+  Serial.print("  Gyro Y: "); Serial.println(mpu.getGyroYoffset());
+  Serial.print("  Gyro Z: "); Serial.println(mpu.getGyroZoffset());
+  
+  return true;
 }
 
 // Отправка данных через Serial и BLE
@@ -435,7 +361,9 @@ void processCommand(String command) {
   }
   else if (command == "RECALIBRATE") {
     calibrated = false;
-    calibrateSensor();
+    Serial.println("Recalibrating MPU6050...");
+    mpu.calcOffsets();
+    calibrated = true;
     Serial.println("RECALIBRATION_COMPLETE");
     
     if (deviceConnected && pCharacteristic != NULL) {
@@ -508,17 +436,14 @@ void processCommand(String command) {
     }
   }
   else if (command == "TEMP") {
-    sensors_event_t a, g, temp;
-    if (mpu.getEvent(&a, &g, &temp)) {
-      String tempStr = "Temperature: " + String(temp.temperature) + "C";
-      Serial.println(tempStr);
-      
-      if (deviceConnected && pCharacteristic != NULL) {
-        pCharacteristic->setValue(tempStr.c_str());
-        pCharacteristic->notify();
-      }
-    } else {
-      Serial.println("Error reading temperature");
+    mpu.update();
+    float temperature = mpu.getTemp();
+    String tempStr = "Temperature: " + String(temperature) + "C";
+    Serial.println(tempStr);
+    
+    if (deviceConnected && pCharacteristic != NULL) {
+      pCharacteristic->setValue(tempStr.c_str());
+      pCharacteristic->notify();
     }
   }
   else if (command == "SCAN_I2C") {
@@ -613,9 +538,10 @@ void setup() {
   pinMode(2, OUTPUT);
   digitalWrite(2, LOW);
   
-  // Инициализация I2C с явным указанием пинов для ESP32
-  Wire.begin(21, 22); // SDA=GPIO21, SCL=GPIO22
-  Wire.setClock(100000); // Начинаем с низкой скорости 100kHz
+  // Инициализация I2C с другими пинами если нужно
+  // Wire.begin(SDA_PIN, SCL_PIN); // Для ESP32 обычно 21, 22
+  Wire.begin(21, 22); // Явно указываем пины для ESP32
+  Wire.setClock(400000); // Устанавливаем скорость 400kHz
   
   // Сканирование I2C шины и поиск MPU6050
   bool mpuFound = scanAndFindMPU6050();
@@ -647,34 +573,36 @@ void setup() {
     ESP.restart();
   }
   
-  // Инициализация MPU6050
-  if (!initMPU6050Alternative()) {
-    Serial.println("\n❌ Failed to initialize MPU6050!");
+  // Инициализация MPU6050 с библиотекой MPU6050_light
+  if (!initMPU6050WithLightLibrary()) {
+    Serial.println("\n❌ Failed to initialize MPU6050 with MPU6050_light library!");
     
-    // Пробуем самый простой метод
-    Serial.println("Trying simplest initialization...");
+    // Пробуем альтернативный метод
+    Serial.println("Trying alternative initialization method...");
+    
     Wire.begin();
     delay(100);
     
-    if (mpu.begin()) {
-      Serial.println("✅ MPU6050 initialized with simple begin()!");
+    // Пробуем простую инициализацию
+    mpu.begin();
+    delay(1000);
+    
+    // Пробуем калибровку
+    Serial.println("Trying to calibrate...");
+    mpu.calcOffsets();
+    
+    // Проверяем, работает ли
+    mpu.update();
+    if (abs(mpu.getAngleX()) < 100 && abs(mpu.getAngleY()) < 100) {
+      Serial.println("✅ MPU6050 working with alternative method!");
+      calibrated = true;
     } else {
-      Serial.println("❌ All initialization methods failed!");
-      Serial.println("Possible solutions:");
-      Serial.println("1. Try different I2C address (0x69 instead of 0x68)");
-      Serial.println("2. Check if MPU6050 module is defective");
-      Serial.println("3. Try different library (MPU6050_light)");
-      Serial.println("\nRestarting in 5 seconds...");
-      delay(5000);
+      Serial.println("❌ Alternative method also failed!");
+      Serial.println("Restarting in 3 seconds...");
+      delay(3000);
       ESP.restart();
     }
   }
-  
-  // Увеличиваем скорость I2C после успешной инициализации
-  Wire.setClock(400000);
-  
-  // Калибровка
-  calibrateSensor();
   
   // Инициализация BLE
   Serial.println("\n==========================================");
@@ -765,46 +693,21 @@ void loop() {
   
   if (!calibrated) return;
   
-  // Чтение данных с датчика
-  sensors_event_t a, g, temp;
-  if (mpu.getEvent(&a, &g, &temp)) {
-    unsigned long currentTime = millis();
-    float deltaTime = (currentTime - lastTime) / 1000.0;
-    if (lastTime == 0) deltaTime = 0.01;
-    lastTime = currentTime;
-    
-    // Компенсация смещения гироскопа
-    float gyroX = g.gyro.x - gyroOffsetX;
-    float gyroY = g.gyro.y - gyroOffsetY;
-    float gyroZ = g.gyro.z - gyroOffsetZ;
-    
-    // Расчет углов по акселерометру
-    float accelPitch = atan2(a.acceleration.y, a.acceleration.z) * 180.0 / PI;
-    float accelRoll = atan2(-a.acceleration.x, sqrt(a.acceleration.y * a.acceleration.y + a.acceleration.z * a.acceleration.z)) * 180.0 / PI;
-    
-    // Интеграция данных гироскопа
-    pitch += gyroX * deltaTime * 180.0 / PI;
-    roll += gyroY * deltaTime * 180.0 / PI;
-    yaw += gyroZ * deltaTime * 180.0 / PI;
-    
-    // Комплементарный фильтр
-    float alpha = 0.96;
-    pitch = alpha * pitch + (1.0 - alpha) * accelPitch;
-    roll = alpha * roll + (1.0 - alpha) * accelRoll;
-    
-    // Отправка данных
-    if (currentTime - lastDataSend >= SEND_INTERVAL) {
-      if (dataChanged() || lastDataSend == 0) {
-        sendSensorData();
-        lastDataSend = currentTime;
-      }
-    }
-  } else {
-    // Ошибка чтения датчика
-    static unsigned long lastErrorTime = 0;
-    if (millis() - lastErrorTime > 5000) {
-      Serial.println("Error reading MPU6050 data");
-      lastErrorTime = millis();
+  // Обновляем данные с MPU6050
+  mpu.update();
+  
+  // Получаем углы из MPU6050
+  pitch = mpu.getAngleX();  // Pitch (тангаж)
+  roll = mpu.getAngleY();   // Roll (крен)
+  yaw = mpu.getAngleZ();    // Yaw (рыскание)
+  
+  unsigned long currentTime = millis();
+  
+  // Отправка данных
+  if (currentTime - lastDataSend >= SEND_INTERVAL) {
+    if (dataChanged() || lastDataSend == 0) {
+      sendSensorData();
+      lastDataSend = currentTime;
     }
   }
   

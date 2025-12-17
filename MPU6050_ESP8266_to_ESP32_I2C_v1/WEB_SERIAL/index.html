@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Монитор COM-портов</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(to right, #4a6fa5, #2c3e50);
+            color: white;
+            padding: 25px 30px;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .control-panel, .data-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+        }
+        
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4a6fa5;
+            font-size: 1.5rem;
+        }
+        
+        .port-selector {
+            margin-bottom: 25px;
+        }
+        
+        .port-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            background: #f9f9f9;
+            margin-bottom: 15px;
+        }
+        
+        .port-item {
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .port-item:hover {
+            background: #e8f4fd;
+            border-color: #4a6fa5;
+        }
+        
+        .port-item.selected {
+            background: #d4edda;
+            border-color: #28a745;
+            font-weight: bold;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 25px;
+            background: linear-gradient(to right, #4a6fa5, #2c3e50);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-success {
+            background: linear-gradient(to right, #28a745, #20c997);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(to right, #dc3545, #e83e8c);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(to right, #ffc107, #fd7e14);
+        }
+        
+        .connection-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .data-display {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            background: #f8f9fa;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+        
+        .data-controls {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        
+        .notification.show {
+            opacity: 1;
+        }
+        
+        .notification.success {
+            background: #28a745;
+        }
+        
+        .notification.error {
+            background: #dc3545;
+        }
+        
+        .notification.info {
+            background: #17a2b8;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            font-size: 14px;
+            border-top: 1px solid #dee2e6;
+            margin-top: 30px;
+        }
+        
+        .compatibility-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .compatibility-warning.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Монитор COM-портов</h1>
+            <div class="subtitle">Подключение и чтение данных с последовательных портов через браузер</div>
+        </header>
+        
+        <div class="compatibility-warning" id="compatibilityWarning">
+            <strong>Внимание:</strong> Для работы приложения необходим браузер с поддержкой Web Serial API 
+            (Chrome 89+, Edge 79+). Приложение будет работать только по HTTPS или localhost.
+        </div>
+        
+        <div class="content">
+            <div class="control-panel">
+                <h2>Управление подключением</h2>
+                
+                <div class="port-selector">
+                    <h3>Доступные COM-порты</h3>
+                    <div class="port-list" id="portList">
+                        <div class="port-item">Нажмите "Обновить список портов"</div>
+                    </div>
+                    <button class="btn btn-warning" id="refreshPorts">Обновить список портов</button>
+                </div>
+                
+                <div class="input-group">
+                    <label for="baudRate">Скорость передачи (бод)</label>
+                    <select id="baudRate">
+                        <option value="9600">9600</option>
+                        <option value="19200">19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200" selected>115200</option>
+                        <option value="230400">230400</option>
+                        <option value="460800">460800</option>
+                        <option value="921600">921600</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="dataBits">Биты данных</label>
+                    <select id="dataBits">
+                        <option value="7">7</option>
+                        <option value="8" selected>8</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="stopBits">Стоповые биты</label>
+                    <select id="stopBits">
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="parity">Контроль четности</label>
+                    <select id="parity">
+                        <option value="none" selected>Нет</option>
+                        <option value="even">Четный</option>
+                        <option value="odd">Нечетный</option>
+                    </select>
+                </div>
+                
+                <div class="connection-controls">
+                    <button class="btn btn-success" id="connectBtn">Подключиться</button>
+                    <button class="btn btn-danger" id="disconnectBtn" disabled>Отключиться</button>
+                </div>
+                
+                <div class="connection-status disconnected" id="connectionStatus">
+                    Не подключено
+                </div>
+            </div>
+            
+            <div class="data-panel">
+                <h2>Данные с COM-порта</h2>
+                
+                <div class="stats">
+                    <div>Получено: <span id="bytesReceived">0</span> байт</div>
+                    <div>Статус: <span id="currentStatus">Ожидание подключения</span></div>
+                </div>
+                
+                <div class="data-display" id="dataDisplay">
+                    Данные появятся здесь после подключения к порту...
+                </div>
+                
+                <div class="data-controls">
+                    <button class="btn" id="clearData">Очистить данные</button>
+                    <button class="btn" id="pauseResume">Приостановить</button>
+                    <button class="btn" id="saveData">Сохранить данные</button>
+                    <button class="btn" id="sendData">Отправить данные</button>
+                </div>
+                
+                <div class="input-group" style="margin-top: 20px;">
+                    <label for="dataToSend">Данные для отправки</label>
+                    <input type="text" id="dataToSend" placeholder="Введите данные для отправки в порт">
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Веб-приложение для работы с COM-портами &copy; 2023</p>
+            <p>Для корректной работы используйте браузер Chrome 89+ или Edge 79+</p>
+        </footer>
+    </div>
+    
+    <div class="notification" id="notification"></div>
+    
+    <script src="script.js"></script>
+</body>
+</html>

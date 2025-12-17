@@ -1,0 +1,17 @@
+# Включение CORS для работы с Web Serial API
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header set Access-Control-Allow-Headers "Content-Type"
+
+# Настройка MIME-типов
+AddType text/html .html
+AddType text/css .css
+AddType application/javascript .js
+
+# Кодировка UTF-8
+AddDefaultCharset UTF-8
+
+# Включение сжатия Gzip для повышения производительности
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript
+</IfModule>
