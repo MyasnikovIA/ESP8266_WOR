@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Визуализация датчика MPU6050</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00dbde, #fc00ff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .subtitle {
+            color: #a0a0c0;
+            font-size: 1.1rem;
+        }
+
+        .compatibility-warning {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #ffc107;
+            color: #ffc107;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            display: none;
+        }
+
+        .compatibility-warning.show {
+            display: block;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .visualization-section {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .controls-section {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .data-panel {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #00dbde;
+            border-bottom: 2px solid #00dbde;
+            padding-bottom: 10px;
+        }
+
+        /* Стили для куба */
+        .cube-container {
+            width: 400px;
+            height: 400px;
+            margin: 40px auto;
+            perspective: 1000px;
+        }
+
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+            transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg);
+        }
+
+        .face {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            border: 2px solid #00dbde;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px #00dbde;
+            border-radius: 10px;
+            box-shadow: inset 0 0 20px rgba(0, 219, 222, 0.3);
+            background: rgba(0, 219, 222, 0.1);
+        }
+
+        .front  { transform: rotateY(0deg) translateZ(200px); background: rgba(231, 76, 60, 0.8); }
+        .back   { transform: rotateY(180deg) translateZ(200px); background: rgba(52, 152, 219, 0.8); }
+        .right  { transform: rotateY(90deg) translateZ(200px); background: rgba(46, 204, 113, 0.8); }
+        .left   { transform: rotateY(-90deg) translateZ(200px); background: rgba(155, 89, 182, 0.8); }
+        .top    { transform: rotateX(90deg) translateZ(200px); background: rgba(241, 196, 15, 0.8); }
+        .bottom { transform: rotateX(-90deg) translateZ(200px); background: rgba(230, 126, 34, 0.8); }
+
+        /* Индикаторы данных */
+        .data-display {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .data-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid rgba(0, 219, 222, 0.2);
+        }
+
+        .data-label {
+            font-size: 0.9rem;
+            color: #a0a0c0;
+            margin-bottom: 5px;
+        }
+
+        .data-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #00dbde;
+        }
+
+        .direction-indicator {
+            font-size: 1.2rem;
+            margin-left: 5px;
+        }
+
+        .direction-positive { color: #00b09b; }
+        .direction-negative { color: #ff416c; }
+        .direction-zero { color: #ffc107; }
+
+        /* Элементы управления */
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        .control-label {
+            display: block;
+            margin-bottom: 10px;
+            color: #a0a0c0;
+        }
+
+        select, button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 20px;
+            padding-right: 40px;
+        }
+
+        select:disabled, button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        select:hover, button:hover {
+            background: rgba(0, 219, 222, 0.2);
+        }
+
+        button {
+            background: linear-gradient(90deg, #00dbde, #0077ff);
+            font-weight: bold;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 219, 222, 0.4);
+        }
+
+        button.danger {
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+        }
+
+        button.danger:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(255, 65, 108, 0.4);
+        }
+
+        button.success {
+            background: linear-gradient(90deg, #00b09b, #96c93d);
+        }
+
+        button.success:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(0, 176, 155, 0.4);
+        }
+
+        button.warning {
+            background: linear-gradient(90deg, #ffc107, #fd7e14);
+        }
+
+        button.warning:hover:not(:disabled) {
+            box-shadow: 0 5px 15px rgba(255, 193, 7, 0.4);
+        }
+
+        /* Статус соединения */
+        .connection-status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .status-disconnected {
+            background: rgba(255, 65, 108, 0.2);
+            border: 1px solid #ff416c;
+            color: #ff416c;
+        }
+
+        .status-connecting {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #ffc107;
+            color: #ffc107;
+        }
+
+        .status-connected {
+            background: rgba(0, 176, 155, 0.2);
+            border: 1px solid #00b09b;
+            color: #00b09b;
+        }
+
+        .status-error {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid #dc3545;
+            color: #dc3545;
+        }
+
+        /* Индикаторы */
+        .indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .indicator-disconnected {
+            background-color: #ff416c;
+            box-shadow: 0 0 10px #ff416c;
+        }
+
+        .indicator-connecting {
+            background-color: #ffc107;
+            box-shadow: 0 0 10px #ffc107;
+            animation: pulse 1.5s infinite;
+        }
+
+        .indicator-connected {
+            background-color: #00b09b;
+            box-shadow: 0 0 10px #00b09b;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Лог сообщений */
+        .log-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-title {
+            color: #a0a0c0;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .log-messages {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .log-message {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .log-time {
+            color: #00dbde;
+            margin-right: 10px;
+        }
+
+        .log-info {
+            color: #a0a0c0;
+        }
+
+        .log-success {
+            color: #00b09b;
+        }
+
+        .log-warning {
+            color: #ffc107;
+        }
+
+        .log-error {
+            color: #ff416c;
+        }
+
+        /* Уведомления */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+
+        .notification.show {
+            opacity: 1;
+        }
+
+        .notification.success {
+            background: linear-gradient(90deg, #00b09b, #96c93d);
+        }
+
+        .notification.error {
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+        }
+
+        .notification.info {
+            background: linear-gradient(90deg, #00dbde, #0077ff);
+        }
+
+        /* Данные сенсора */
+        .sensor-data-display {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 219, 222, 0.2);
+            border-radius: 10px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+            margin-top: 20px;
+        }
+
+        /* Порты */
+        .port-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 219, 222, 0.2);
+            border-radius: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            margin-bottom: 15px;
+        }
+
+        .port-item {
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .port-item:hover {
+            background: rgba(0, 219, 222, 0.1);
+            border-color: #00dbde;
+        }
+
+        .port-item.selected {
+            background: rgba(0, 176, 155, 0.2);
+            border-color: #00b09b;
+            font-weight: bold;
+        }
+
+        /* Статистика */
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #a0a0c0;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            color: #a0a0c0;
+            font-size: 0.9rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Тумблер для автокалибровки */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ff416c;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #00b09b;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .cube-container {
+                width: 250px;
+                height: 250px;
+            }
+            .face {
+                width: 250px;
+                height: 250px;
+                font-size: 2rem;
+            }
+            .front  { transform: rotateY(0deg) translateZ(125px); }
+            .back   { transform: rotateY(180deg) translateZ(125px); }
+            .right  { transform: rotateY(90deg) translateZ(125px); }
+            .left   { transform: rotateY(-90deg) translateZ(125px); }
+            .top    { transform: rotateX(90deg) translateZ(125px); }
+            .bottom { transform: rotateX(-90deg) translateZ(125px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>3D Визуализация датчика MPU6050</h1>
+            <p class="subtitle">Отслеживание ориентации в реальном времени через COM-порт</p>
+        </header>
+
+        <div class="compatibility-warning" id="compatibilityWarning">
+            <strong>Внимание:</strong> Для работы приложения необходим браузер с поддержкой Web Serial API 
+            (Chrome 89+, Edge 79+). Приложение будет работать только по HTTPS или localhost.
+        </div>
+
+        <div class="data-panel">
+            <h2 class="section-title">Данные с датчика</h2>
+            
+            <div class="data-display">
+                <div class="data-item">
+                    <div class="data-label">Pitch (X)</div>
+                    <div class="data-value" id="absPitch">0.00°</div>
+                    <div class="data-label">
+                        <span id="relPitch">0.00°</span>
+                        <span id="dirPitch" class="direction-indicator direction-zero">●</span>
+                    </div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Roll (Y)</div>
+                    <div class="data-value" id="absRoll">0.00°</div>
+                    <div class="data-label">
+                        <span id="relRoll">0.00°</span>
+                        <span id="dirRoll" class="direction-indicator direction-zero">●</span>
+                    </div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Yaw (Z)</div>
+                    <div class="data-value" id="absYaw">0.00°</div>
+                    <div class="data-label">
+                        <span id="relYaw">0.00°</span>
+                        <span id="dirYaw" class="direction-indicator direction-zero">●</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-display">
+                <div class="data-item">
+                    <div class="data-label">Накопленный Pitch</div>
+                    <div class="data-value" id="accPitch">0.00°</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Накопленный Roll</div>
+                    <div class="data-value" id="accRoll">0.00°</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Накопленный Yaw</div>
+                    <div class="data-value" id="accYaw">0.00°</div>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div>Статус: <span id="currentStatus">Ожидание</span></div>
+                <div>Ноль: <span id="zeroStatus">Не установлен</span></div>
+                <div>Время: <span id="lastUpdate">-</span></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="visualization-section">
+                <h2 class="section-title">3D Визуализация</h2>
+                <div class="cube-container">
+                    <div class="cube" id="cube">
+                        <div class="face front">F</div>
+                        <div class="face back">B</div>
+                        <div class="face right">R</div>
+                        <div class="face left">L</div>
+                        <div class="face top">T</div>
+                        <div class="face bottom">B</div>
+                    </div>
+                </div>
+
+                <div class="sensor-data-display" id="dataDisplay">
+                    Данные появятся здесь после подключения...
+                </div>
+
+                <div class="control-buttons">
+                    <button class="warning" onclick="clearData()">Очистить данные</button>
+                    <button onclick="togglePause()" id="pauseBtn">Пауза</button>
+                    <button class="success" onclick="saveData()">Сохранить</button>
+                </div>
+            </div>
+
+            <div class="controls-section">
+                <h2 class="section-title">Управление</h2>
+                
+                <div class="connection-status status-disconnected" id="connectionStatus">
+                    <span class="indicator indicator-disconnected"></span>
+                    Не подключено
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Выберите COM-порт:</label>
+                    <div class="port-list" id="portList">
+                        <div class="port-item">Нажмите "Подключиться" для выбора порта</div>
+                    </div>
+                    <button id="refresh-ports" class="warning">Обновить список портов</button>
+                    <button id="connect-btn" class="success">Подключиться</button>
+                    <button id="disconnect-btn" class="danger" disabled>Отключиться</button>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Скорость передачи:</label>
+                    <select id="baudRate">
+                        <option value="9600">9600</option>
+                        <option value="19200">19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200" selected>115200</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Управление калибровкой:</label>
+                    <div class="control-buttons">
+                        <button id="set-zero-btn" class="success" disabled>🎯 Ноль</button>
+                        <button id="recalibrate-btn" class="warning" disabled>🔧 Калибровка</button>
+                        <button id="reset-zero-btn" class="danger" disabled>🔄 Сброс нуля</button>
+                        <button id="reset-yaw-btn" disabled>↻ Сброс Yaw</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="toggle-label">
+                        <span>Автокалибровка:</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="auto-calibration-toggle" disabled>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <button id="get-status-btn" disabled>Получить статус устройства</button>
+                </div>
+
+                <div class="log-container">
+                    <div class="log-title">Лог событий:</div>
+                    <div class="log-messages" id="log-messages">
+                        <!-- Сообщения будут добавляться здесь -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>MPU6050 Head Tracker | Веб-интерфейс для визуализации положения датчика</p>
+            <p>Скорость порта: 115200 бод, формат данных: JSON</p>
+        </footer>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        class SerialVisualizer {
+            constructor() {
+                this.port = null;
+                this.reader = null;
+                this.writer = null;
+                this.isConnected = false;
+                this.isPaused = false;
+                this.receivedBytes = 0;
+                this.dataBuffer = '';
+                this.lastData = null;
+                this.cube = document.getElementById('cube');
+                this.selectedPortIndex = null;
+                
+                // История данных для сглаживания
+                this.orientationHistory = {
+                    pitch: [],
+                    roll: [],
+                    yaw: []
+                };
+                
+                this.init();
+            }
+            
+            checkCompatibility() {
+                if (!('serial' in navigator)) {
+                    document.getElementById('compatibilityWarning').classList.add('show');
+                    document.getElementById('connect-btn').disabled = true;
+                    this.showNotification('Ваш браузер не поддерживает Web Serial API. Используйте Chrome 89+ или Edge 79+', 'error');
+                    return false;
+                }
+                return true;
+            }
+            
+            init() {
+                // Проверка совместимости
+                if (!this.checkCompatibility()) return;
+                
+                // Получаем ссылки на DOM элементы
+                this.connectionStatus = document.getElementById('connectionStatus');
+                
+                // Настройка обработчиков событий
+                document.getElementById('connect-btn').addEventListener('click', () => this.connect());
+                document.getElementById('disconnect-btn').addEventListener('click', () => this.disconnect());
+                document.getElementById('refresh-ports').addEventListener('click', () => this.refreshPorts());
+                document.getElementById('set-zero-btn').addEventListener('click', () => this.sendCommand('setZero'));
+                document.getElementById('reset-zero-btn').addEventListener('click', () => this.sendCommand('resetZero'));
+                document.getElementById('recalibrate-btn').addEventListener('click', () => this.sendCommand('recalibrate'));
+                document.getElementById('reset-yaw-btn').addEventListener('click', () => this.sendCommand('resetYaw'));
+                document.getElementById('get-status-btn').addEventListener('click', () => this.sendCommand('getStatus'));
+                
+                // Обработчик для автокалибровки
+                document.getElementById('auto-calibration-toggle').addEventListener('change', (e) => {
+                    this.sendAutoCalibration(e.target.checked);
+                });
+                
+                // Инициализация интерфейса
+                this.updateUI();
+                
+                // Установка скорости по умолчанию
+                document.getElementById('baudRate').value = '115200';
+                
+                // Автообновление списка портов при загрузке
+                this.refreshPorts();
+            }
+            
+            async refreshPorts() {
+                try {
+                    const ports = await navigator.serial.getPorts();
+                    this.displayPorts(ports);
+                    this.showNotification('Список портов обновлен', 'info');
+                    this.addLogMessage(`Найдено ${ports.length} COM-порт(ов)`, 'success');
+                } catch (error) {
+                    console.error('Ошибка при обновлении списка портов:', error);
+                    this.showNotification('Ошибка при обновлении списка портов', 'error');
+                    this.addLogMessage(`Ошибка сканирования портов: ${error.message}`, 'error');
+                }
+            }
+            
+            displayPorts(ports) {
+                const portList = document.getElementById('portList');
+                
+                if (ports.length === 0) {
+                    portList.innerHTML = '<div class="port-item">COM-порты не обнаружены</div>';
+                    return;
+                }
+                
+                let html = '';
+                ports.forEach((port, index) => {
+                    const portInfo = port.getInfo();
+                    html += `
+                        <div class="port-item" data-index="${index}">
+                            <strong>Порт ${index + 1}</strong><br>
+                            <small>VID: ${portInfo.usbVendorId || 'N/A'}, PID: ${portInfo.usbProductId || 'N/A'}</small>
+                        </div>
+                    `;
+                });
+                
+                portList.innerHTML = html;
+                
+                // Добавление обработчиков кликов
+                const portItems = portList.querySelectorAll('.port-item');
+                portItems.forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        portItems.forEach(i => i.classList.remove('selected'));
+                        e.currentTarget.classList.add('selected');
+                        this.selectedPortIndex = e.currentTarget.dataset.index;
+                    });
+                });
+            }
+            
+            async connect() {
+                try {
+                    // Показываем статус подключения
+                    this.updateConnectionStatus('connecting');
+                    this.addLogMessage('Попытка подключения к порту...', 'info');
+                    
+                    // Запрос выбора порта
+                    if (this.selectedPortIndex !== null) {
+                        const ports = await navigator.serial.getPorts();
+                        this.port = ports[this.selectedPortIndex];
+                    } else {
+                        this.port = await navigator.serial.requestPort();
+                    }
+                    
+                    // Получение параметров соединения
+                    const baudRate = parseInt(document.getElementById('baudRate').value);
+                    
+                    // Открытие порта с обработкой ошибок
+                    try {
+                        await this.port.open({
+                            baudRate: baudRate,
+                            dataBits: 8,
+                            stopBits: 1,
+                            parity: 'none',
+                            flowControl: 'none'
+                        });
+                    } catch (openError) {
+                        // Если порт уже открыт, попробуем закрыть и открыть заново
+                        if (openError.message.includes('already open') || openError.message.includes('Failed to open')) {
+                            this.addLogMessage('Порт занят, пытаемся переподключиться...', 'warning');
+                            if (this.port.readable) {
+                                await this.reader.cancel();
+                            }
+                            if (this.port.writable) {
+                                await this.writer.close();
+                            }
+                            await this.port.close();
+                            
+                            // Небольшая пауза
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            
+                            // Открываем заново
+                            await this.port.open({
+                                baudRate: baudRate,
+                                dataBits: 8,
+                                stopBits: 1,
+                                parity: 'none',
+                                flowControl: 'none'
+                            });
+                        } else {
+                            throw openError;
+                        }
+                    }
+                    
+                    this.isConnected = true;
+                    this.updateUI();
+                    this.updateConnectionStatus('connected');
+                    this.showNotification(`Подключено к COM-порту (${baudRate} бод)`, 'success');
+                    this.addLogMessage('Подключение успешно установлено', 'success');
+                    
+                    // Начало чтения данных
+                    this.readData();
+                    
+                } catch (error) {
+                    console.error('Ошибка подключения:', error);
+                    this.showNotification(`Ошибка подключения: ${error.message}`, 'error');
+                    this.addLogMessage(`Ошибка подключения: ${error.message}`, 'error');
+                    this.updateConnectionStatus('error');
+                    this.isConnected = false;
+                    this.updateUI();
+                }
+            }
+            
+            async disconnect() {
+                try {
+                    if (this.reader) {
+                        await this.reader.cancel();
+                    }
+                    
+                    if (this.writer) {
+                        await this.writer.close();
+                    }
+                    
+                    if (this.port) {
+                        await this.port.close();
+                    }
+                    
+                    this.isConnected = false;
+                    this.updateUI();
+                    this.updateConnectionStatus('disconnected');
+                    this.showNotification('Отключено от COM-порта', 'info');
+                    this.addLogMessage('Отключено от порта', 'info');
+                    
+                } catch (error) {
+                    console.error('Ошибка отключения:', error);
+                    this.showNotification('Ошибка при отключении', 'error');
+                    this.addLogMessage(`Ошибка отключения: ${error.message}`, 'error');
+                }
+            }
+            
+            async readData() {
+                const textDecoder = new TextDecoder();
+                
+                try {
+                    while (this.port.readable && this.isConnected) {
+                        this.reader = this.port.readable.getReader();
+                        
+                        try {
+                            while (true) {
+                                const { value, done } = await this.reader.read();
+                                
+                                if (done) {
+                                    break;
+                                }
+                                
+                                if (value && !this.isPaused) {
+                                    this.processData(value, textDecoder);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Ошибка чтения:', error);
+                            if (!error.message.includes('The port has been closed')) {
+                                this.addLogMessage(`Ошибка чтения данных: ${error.message}`, 'error');
+                            }
+                        } finally {
+                            this.reader.releaseLock();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка в цикле чтения:', error);
+                    this.updateConnectionStatus('error');
+                }
+            }
+            
+            processData(data, textDecoder) {
+                // Обновление счетчика байтов
+                this.receivedBytes += data.length;
+                
+                // Декодирование данных
+                let decodedData = '';
+                try {
+                    decodedData = textDecoder.decode(data);
+                } catch (e) {
+                    decodedData = this.arrayBufferToHex(data);
+                }
+                
+                // Добавление в буфер
+                this.dataBuffer += decodedData;
+                
+                // Обработка полных строк
+                const lines = this.dataBuffer.split('\n');
+                this.dataBuffer = lines.pop() || '';
+                
+                lines.forEach(line => {
+                    line = line.trim();
+                    if (line) {
+                        this.processLine(line);
+                    }
+                });
+                
+                // Отображение сырых данных
+                this.displayRawData(decodedData);
+            }
+            
+            processLine(line) {
+                try {
+                    const data = JSON.parse(line);
+                    
+                    // Проверяем формат данных
+                    if (data.angles && data.absolute) {
+                        // Новый формат данных: {"angles":{"pitch":-1.2,"roll":1.5,"yaw":2.5},"absolute":{...}}
+                        this.lastData = data;
+                        this.updateDisplayNewFormat(data);
+                        this.update3DVisualization(data);
+                    } else if (data.type === 'sensorData') {
+                        // Старый формат данных
+                        this.lastData = data;
+                        this.updateDisplay(data);
+                        this.update3DVisualization(data);
+                    } else if (data.type === 'status') {
+                        this.showNotification(data.message, 'info');
+                        this.addLogMessage(`Статус: ${data.message}`, 'info');
+                    } else if (data.type === 'zeroInfo') {
+                        this.showNotification('Точка нуля установлена', 'success');
+                        this.addLogMessage(`Точка нуля установлена: P=${data.zeroPitch}°, R=${data.zeroRoll}°, Y=${data.zeroYaw}°`, 'success');
+                        document.getElementById('zeroStatus').textContent = 'Установлен';
+                    } else if (data.type === 'zeroReset') {
+                        this.showNotification('Точка нуля сброшена', 'info');
+                        this.addLogMessage('Точка нуля сброшена', 'info');
+                        document.getElementById('zeroStatus').textContent = 'Не установлен';
+                    } else if (data.type === 'autoCalibration') {
+                        this.showNotification(data.message, 'info');
+                        this.addLogMessage(`Автокалибровка: ${data.message}`, 'info');
+                    } else if (data.type === 'autoCalibrationUpdate') {
+                        const toggle = document.getElementById('auto-calibration-toggle');
+                        toggle.checked = data.enabled;
+                        toggle.disabled = false;
+                        this.addLogMessage(`Автокалибровка ${data.enabled ? 'включена' : 'выключена'}`, 'info');
+                    } else if (data.type === 'pong') {
+                        this.addLogMessage('Связь с устройством установлена', 'success');
+                    } else if (data.type === 'fullStatus') {
+                        this.displayDeviceStatus(data);
+                    } else if (data.message) {
+                        // Простое текстовое сообщение
+                        this.addLogMessage(`Устройство: ${data.message}`, 'info');
+                    }
+                    
+                    // Обновление времени последнего обновления
+                    const now = new Date();
+                    document.getElementById('lastUpdate').textContent = 
+                        `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+                        
+                } catch (error) {
+                    // Если это не JSON, выводим как текст
+                    if (line.includes('Error') || line.includes('error')) {
+                        this.addLogMessage(`Устройство: ${line}`, 'error');
+                    } else if (line.length < 100) {
+                        this.addLogMessage(`Устройство: ${line}`, 'info');
+                    }
+                }
+            }
+            
+            updateDisplay(data) {
+                // Старый формат данных
+                // Обновление абсолютной ориентации
+                if (data.absPitch !== undefined) {
+                    document.getElementById('absPitch').textContent = data.absPitch.toFixed(1) + '°';
+                }
+                if (data.absRoll !== undefined) {
+                    document.getElementById('absRoll').textContent = data.absRoll.toFixed(1) + '°';
+                }
+                if (data.absYaw !== undefined) {
+                    document.getElementById('absYaw').textContent = data.absYaw.toFixed(1) + '°';
+                }
+                
+                // Обновление относительной ориентации
+                if (data.pitch !== undefined) {
+                    document.getElementById('relPitch').textContent = data.pitch.toFixed(1) + '°';
+                }
+                if (data.roll !== undefined) {
+                    document.getElementById('relRoll').textContent = data.roll.toFixed(1) + '°';
+                }
+                if (data.yaw !== undefined) {
+                    document.getElementById('relYaw').textContent = data.yaw.toFixed(1) + '°';
+                }
+                
+                // Обновление индикаторов направления
+                if (data.dirPitch !== undefined) {
+                    this.updateDirectionIndicator('dirPitch', data.dirPitch);
+                }
+                if (data.dirRoll !== undefined) {
+                    this.updateDirectionIndicator('dirRoll', data.dirRoll);
+                }
+                if (data.dirYaw !== undefined) {
+                    this.updateDirectionIndicator('dirYaw', data.dirYaw);
+                }
+                
+                // Обновление статуса
+                if (data.zeroSet !== undefined) {
+                    document.getElementById('zeroStatus').textContent = 
+                        data.zeroSet ? 'Установлен' : 'Не установлен';
+                }
+            }
+            
+            updateDisplayNewFormat(data) {
+                // Новый формат данных: {"angles":{"pitch":-1.2,"roll":1.5,"yaw":2.5},"absolute":{...}}
+                
+                // Обновление абсолютной ориентации
+                if (data.absolute && data.absolute.pitch !== undefined) {
+                    document.getElementById('absPitch').textContent = data.absolute.pitch.toFixed(1) + '°';
+                }
+                if (data.absolute && data.absolute.roll !== undefined) {
+                    document.getElementById('absRoll').textContent = data.absolute.roll.toFixed(1) + '°';
+                }
+                if (data.absolute && data.absolute.yaw !== undefined) {
+                    document.getElementById('absYaw').textContent = data.absolute.yaw.toFixed(1) + '°';
+                }
+                
+                // Обновление относительной ориентации
+                if (data.angles && data.angles.pitch !== undefined) {
+                    document.getElementById('relPitch').textContent = data.angles.pitch.toFixed(1) + '°';
+                }
+                if (data.angles && data.angles.roll !== undefined) {
+                    document.getElementById('relRoll').textContent = data.angles.roll.toFixed(1) + '°';
+                }
+                if (data.angles && data.angles.yaw !== undefined) {
+                    document.getElementById('relYaw').textContent = data.angles.yaw.toFixed(1) + '°';
+                }
+                
+                // Обновление индикаторов направления
+                if (data.direction && data.direction.pitch !== undefined) {
+                    this.updateDirectionIndicator('dirPitch', data.direction.pitch);
+                }
+                if (data.direction && data.direction.roll !== undefined) {
+                    this.updateDirectionIndicator('dirRoll', data.direction.roll);
+                }
+                if (data.direction && data.direction.yaw !== undefined) {
+                    this.updateDirectionIndicator('dirYaw', data.direction.yaw);
+                }
+                
+                // Обновление статуса
+                if (data.zero_set !== undefined) {
+                    document.getElementById('zeroStatus').textContent = 
+                        data.zero_set ? 'Установлен' : 'Не установлен';
+                }
+                
+                document.getElementById('currentStatus').textContent = 'Прием данных';
+                document.getElementById('currentStatus').style.color = '#00b09b';
+            }
+            
+            updateDirectionIndicator(elementId, direction) {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.textContent = direction > 0 ? '↗' : direction < 0 ? '↙' : '●';
+                    element.className = `direction-indicator ${direction > 0 ? 'direction-positive' : 
+                                      direction < 0 ? 'direction-negative' : 'direction-zero'}`;
+                }
+            }
+            
+            update3DVisualization(data) {
+                let pitch = 0, roll = 0, yaw = 0;
+                
+                // Определяем формат данных и извлекаем углы
+                if (data.angles && data.absolute) {
+                    // Новый формат
+                    pitch = data.angles.pitch || 0;
+                    roll = data.angles.roll || 0;
+                    yaw = data.angles.yaw || 0;
+                } else if (data.pitch !== undefined) {
+                    // Старый формат
+                    pitch = data.pitch || 0;
+                    roll = data.roll || 0;
+                    yaw = data.yaw || 0;
+                }
+                
+                // Применение сглаживания
+                const smoothPitch = this.smoothValue('pitch', pitch);
+                const smoothRoll = this.smoothValue('roll', roll);
+                const smoothYaw = this.smoothValue('yaw', yaw);
+                
+                // Применение вращения к кубу
+                // Порядок вращения: Yaw (ось Y), Pitch (ось X), Roll (ось Z)
+                // В CSS-трансформациях порядок важен: сначала rotateY, потом rotateX, потом rotateZ
+                const transform = `rotateY(${smoothYaw}deg) rotateX(${smoothPitch}deg) rotateZ(${smoothRoll}deg)`;
+                
+                // Применяем трансформацию
+                this.cube.style.transform = transform;
+                
+                // Отладочный вывод в консоль (можно отключить)
+                console.debug(`3D Cube: Pitch=${smoothPitch.toFixed(1)}°, Roll=${smoothRoll.toFixed(1)}°, Yaw=${smoothYaw.toFixed(1)}°`);
+            }
+            
+            smoothValue(axis, value) {
+                // Добавление нового значения в историю
+                this.orientationHistory[axis].push(value);
+                
+                // Сохранение только последних 5 значений
+                if (this.orientationHistory[axis].length > 5) {
+                    this.orientationHistory[axis].shift();
+                }
+                
+                // Вычисление среднего
+                if (this.orientationHistory[axis].length === 0) {
+                    return value;
+                }
+                
+                const sum = this.orientationHistory[axis].reduce((a, b) => a + b, 0);
+                return sum / this.orientationHistory[axis].length;
+            }
+            
+            arrayBufferToHex(buffer) {
+                return Array.from(new Uint8Array(buffer))
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join(' ');
+            }
+            
+            displayRawData(data) {
+                const dataDisplay = document.getElementById('dataDisplay');
+                if (dataDisplay) {
+                    dataDisplay.textContent += data;
+                    
+                    // Ограничение размера отображения
+                    if (dataDisplay.textContent.length > 5000) {
+                        dataDisplay.textContent = dataDisplay.textContent.slice(-5000);
+                    }
+                    
+                    // Автопрокрутка
+                    dataDisplay.scrollTop = dataDisplay.scrollHeight;
+                }
+            }
+            
+            async sendCommand(command) {
+                if (!this.isConnected || !this.port) {
+                    this.showNotification('Сначала подключитесь к порту', 'error');
+                    return;
+                }
+                
+                try {
+                    const textEncoder = new TextEncoder();
+                    this.writer = this.port.writable.getWriter();
+                    
+                    // Отправка команды с переводом строки
+                    await this.writer.write(textEncoder.encode(command + '\n'));
+                    
+                    // Освобождение writer
+                    this.writer.releaseLock();
+                    
+                    this.showNotification(`Команда отправлена: ${command}`, 'success');
+                    this.addLogMessage(`Отправлена команда: ${command}`, 'info');
+                    
+                } catch (error) {
+                    console.error('Ошибка отправки команды:', error);
+                    this.showNotification('Ошибка отправки команды', 'error');
+                    this.addLogMessage(`Ошибка отправки команды: ${error.message}`, 'error');
+                }
+            }
+            
+            async sendAutoCalibration(enabled) {
+                const command = `{"command":"setAutoCalibration","enable":${enabled}}`;
+                await this.sendCommand(command);
+            }
+            
+            updateUI() {
+                const connectBtn = document.getElementById('connect-btn');
+                const disconnectBtn = document.getElementById('disconnect-btn');
+                const setZeroBtn = document.getElementById('set-zero-btn');
+                const resetZeroBtn = document.getElementById('reset-zero-btn');
+                const recalibrateBtn = document.getElementById('recalibrate-btn');
+                const resetYawBtn = document.getElementById('reset-yaw-btn');
+                const getStatusBtn = document.getElementById('get-status-btn');
+                const autoCalibrationToggle = document.getElementById('auto-calibration-toggle');
+                
+                if (this.isConnected) {
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    setZeroBtn.disabled = false;
+                    resetZeroBtn.disabled = false;
+                    recalibrateBtn.disabled = false;
+                    resetYawBtn.disabled = false;
+                    getStatusBtn.disabled = false;
+                    autoCalibrationToggle.disabled = false;
+                    document.getElementById('currentStatus').textContent = 'Прием данных';
+                    document.getElementById('currentStatus').style.color = '#00b09b';
+                } else {
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    setZeroBtn.disabled = true;
+                    resetZeroBtn.disabled = true;
+                    recalibrateBtn.disabled = true;
+                    resetYawBtn.disabled = true;
+                    getStatusBtn.disabled = true;
+                    autoCalibrationToggle.disabled = true;
+                    document.getElementById('currentStatus').textContent = 'Ожидание подключения';
+                    document.getElementById('currentStatus').style.color = '#ff416c';
+                }
+            }
+            
+            updateConnectionStatus(status) {
+                const statusText = {
+                    disconnected: 'Не подключено',
+                    connecting: 'Подключение...',
+                    connected: 'Подключено',
+                    error: 'Ошибка подключения'
+                };
+                
+                const statusClass = {
+                    disconnected: 'status-disconnected',
+                    connecting: 'status-connecting',
+                    connected: 'status-connected',
+                    error: 'status-error'
+                };
+                
+                const indicatorClass = {
+                    disconnected: 'indicator-disconnected',
+                    connecting: 'indicator-connecting',
+                    connected: 'indicator-connected',
+                    error: 'indicator-disconnected'
+                };
+                
+                if (this.connectionStatus) {
+                    this.connectionStatus.innerHTML = `<span class="indicator ${indicatorClass[status]}"></span>${statusText[status]}`;
+                    this.connectionStatus.className = `connection-status ${statusClass[status]}`;
+                }
+            }
+            
+            showNotification(message, type = 'info') {
+                const notification = document.getElementById('notification');
+                if (notification) {
+                    notification.textContent = message;
+                    notification.className = `notification ${type} show`;
+                    
+                    setTimeout(() => {
+                        notification.classList.remove('show');
+                    }, 3000);
+                }
+            }
+            
+            addLogMessage(message, type = 'info') {
+                const logMessages = document.getElementById('log-messages');
+                if (logMessages) {
+                    const now = new Date();
+                    const timeString = now.toTimeString().split(' ')[0];
+                    
+                    const logEntry = document.createElement('div');
+                    logEntry.className = `log-message log-${type}`;
+                    logEntry.innerHTML = `<span class="log-time">[${timeString}]</span>${message}`;
+                    
+                    logMessages.appendChild(logEntry);
+                    
+                    // Автопрокрутка к последнему сообщению
+                    logMessages.scrollTop = logMessages.scrollHeight;
+                    
+                    // Ограничение количества сообщений в логе
+                    const maxMessages = 50;
+                    if (logMessages.children.length > maxMessages) {
+                        logMessages.removeChild(logMessages.firstChild);
+                    }
+                }
+            }
+            
+            clearData() {
+                this.dataBuffer = '';
+                this.orientationHistory = { pitch: [], roll: [], yaw: [] };
+                const dataDisplay = document.getElementById('dataDisplay');
+                if (dataDisplay) {
+                    dataDisplay.textContent = '';
+                }
+                this.showNotification('Данные очищены', 'info');
+                this.addLogMessage('Данные очищены', 'info');
+            }
+            
+            togglePause() {
+                this.isPaused = !this.isPaused;
+                const pauseBtn = document.getElementById('pauseBtn');
+                
+                if (this.isPaused) {
+                    pauseBtn.textContent = 'Продолжить';
+                    document.getElementById('currentStatus').textContent = 'Приостановлено';
+                    document.getElementById('currentStatus').style.color = '#ffc107';
+                    this.showNotification('Чтение приостановлено', 'info');
+                    this.addLogMessage('Чтение данных приостановлено', 'warning');
+                } else {
+                    pauseBtn.textContent = 'Пауза';
+                    document.getElementById('currentStatus').textContent = 'Прием данных';
+                    document.getElementById('currentStatus').style.color = '#00b09b';
+                    this.showNotification('Чтение возобновлено', 'success');
+                    this.addLogMessage('Чтение данных возобновлено', 'success');
+                }
+            }
+            
+            saveData() {
+                if (!this.dataBuffer) {
+                    this.showNotification('Нет данных для сохранения', 'error');
+                    return;
+                }
+                
+                try {
+                    const blob = new Blob([this.dataBuffer], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    
+                    a.href = url;
+                    a.download = `mpu6050-data-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    this.showNotification('Данные сохранены', 'success');
+                    this.addLogMessage('Данные сохранены в файл', 'success');
+                    
+                } catch (error) {
+                    console.error('Ошибка сохранения:', error);
+                    this.showNotification('Ошибка сохранения данных', 'error');
+                    this.addLogMessage(`Ошибка сохранения: ${error.message}`, 'error');
+                }
+            }
+            
+            displayDeviceStatus(status) {
+                let message = 'Статус устройства: ';
+                message += `MPU6050: ${status.mpuConnected ? 'подключен' : 'не подключен'}, `;
+                message += `Калибровка: ${status.calibrated ? 'выполнена' : 'не выполнена'}, `;
+                message += `Точка нуля: ${status.zeroSet ? 'установлена' : 'не установлена'}, `;
+                message += `Автокалибровка: ${status.autoCalibration ? 'включена' : 'выключена'}`;
+                
+                this.addLogMessage(message, 'info');
+            }
+        }
+        
+        // Глобальные функции для кнопок
+        function clearData() {
+            if (window.serialVisualizer) {
+                window.serialVisualizer.clearData();
+            }
+        }
+        
+        function togglePause() {
+            if (window.serialVisualizer) {
+                window.serialVisualizer.togglePause();
+            }
+        }
+        
+        function saveData() {
+            if (window.serialVisualizer) {
+                window.serialVisualizer.saveData();
+            }
+        }
+        
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            window.serialVisualizer = new SerialVisualizer();
+            
+            // Обработка закрытия страницы
+            window.addEventListener('beforeunload', () => {
+                if (window.serialVisualizer && window.serialVisualizer.isConnected) {
+                    window.serialVisualizer.disconnect();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

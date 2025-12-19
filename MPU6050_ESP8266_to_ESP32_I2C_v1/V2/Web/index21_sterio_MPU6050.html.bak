@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Шлем с управлением от MPU6050 через COM-порт</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: #000;
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        .viewer-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .viewer-row {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .fragment {
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #666;
+            font-size: 14px;
+            border: 1px solid #333;
+            z-index: 2;
+            overflow: hidden;
+            flex-direction: column;
+            padding: 10px;
+        }
+        
+        .fragment-left {
+            width: 300px;
+            height: 100%;
+            border-right: 1px solid #333;
+        }
+        
+        .fragment-right {
+            width: 300px;
+            height: 100%;
+            border-left: 1px solid #333;
+        }
+        
+        .fragment-center {
+            width: 50px;
+            height: 100%;
+            border-left: 1px solid #333;
+            border-right: 1px solid #333;
+            writing-mode: vertical-lr;
+            text-orientation: mixed;
+        }
+        
+        .main-content {
+            display: flex;
+            flex: 1;
+            height: 100%;
+            position: relative;
+        }
+        
+        .viewer-half {
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+            flex: 1;
+        }
+        
+        #renderCanvasLeft, #renderCanvasRight {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .divider {
+            width: 2px;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.3);
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fdbb2d;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .sensor-data {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin: 2px 0;
+            font-size: 12px;
+            min-width: 120px;
+        }
+        
+        .sensor-value {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .control-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 2px;
+            font-size: 12px;
+        }
+        
+        .control-btn:hover {
+            background: #1976D2;
+        }
+        
+        .sensor-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        /* Стили для подключения к COM-порту */
+        .compatibility-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 20;
+            display: none;
+        }
+        
+        .compatibility-warning.hidden {
+            display: none;
+        }
+        
+        .compatibility-warning.show {
+            display: block;
+        }
+        
+        .connection-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 250px;
+        }
+        
+        .connection-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .connection-status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .port-list {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 5px;
+            background: #222;
+            margin-bottom: 10px;
+        }
+        
+        .port-item {
+            padding: 8px;
+            margin: 3px 0;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #ddd;
+        }
+        
+        .port-item:hover {
+            background: #444;
+            border-color: #2196F3;
+        }
+        
+        .port-item.selected {
+            background: #2c3e50;
+            border-color: #2196F3;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .viewer-container {
+                flex-direction: column;
+            }
+            
+            .viewer-row {
+                flex-direction: column;
+            }
+            
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .viewer-half {
+                width: 100%;
+                height: 50%;
+            }
+            
+            .fragment-left, .fragment-right {
+                width: 100%;
+                height: 150px;
+            }
+            
+            .fragment-center {
+                width: 100%;
+                height: 30px;
+                writing-mode: horizontal-tb;
+            }
+            
+            .divider {
+                width: 100%;
+                height: 2px;
+                top: 50%;
+                left: 0;
+                transform: translateY(-50%);
+            }
+            
+            .connection-panel {
+                position: relative;
+                top: 0;
+                left: 0;
+                width: calc(100% - 20px);
+                margin: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <!-- Панель управления подключением -->
+        <div class="connection-panel">
+            <h3 style="margin-bottom: 10px; color: #fff;">Подключение к COM-порту</h3>
+            <div class="connection-controls">
+                <div class="port-list" id="portList">
+                    <div class="port-item">Нажмите "Подключиться" для выбора порта</div>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="control-btn" id="connectBtn">Подключиться</button>
+                    <button class="control-btn" id="disconnectBtn" disabled>Отключиться</button>
+                    <button class="control-btn" id="refreshPorts">Обновить</button>
+                </div>
+                <div class="connection-status disconnected" id="connectionStatus">
+                    Не подключено
+                </div>
+                <div style="margin-top: 10px;">
+                    <button class="control-btn" onclick="sendCommand('calib')">Калибровать</button>
+                    <button class="control-btn" onclick="sendCommand('zero')">Установить ноль</button>
+                    <button class="control-btn" onclick="sendCommand('resetYaw')">Сброс Yaw</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Панель совместимости -->
+        <div class="compatibility-warning hidden" id="compatibilityWarning">
+            <strong>Внимание:</strong> Для работы приложения необходим браузер с поддержкой Web Serial API 
+            (Chrome 89+, Edge 79+). Приложение будет работать только по HTTPS или localhost.
+        </div>
+        
+        <!-- Экран загрузки -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Загрузка VR среды...</p>
+        </div>
+        
+        <!-- Основной контент -->
+        <div class="viewer-row">
+            <!-- Левая панель -->
+            <div class="fragment fragment-left" id="fragmentLeft">
+                <div class="sensor-controls">
+                    <div class="sensor-data">
+                        <div>Pitch: <span class="sensor-value" id="pitchValue">0°</span></div>
+                        <div>Roll: <span class="sensor-value" id="rollValue">0°</span></div>
+                        <div>Yaw: <span class="sensor-value" id="yawValue">0°</span></div>
+                    </div>
+                    <div class="sensor-data">
+                        <div>Относительный Yaw: <span class="sensor-value" id="relativeYawValue">0°</span></div>
+                        <div>Начальный Yaw: <span class="sensor-value" id="initialYawValue">0°</span></div>
+                    </div>
+                    <button class="control-btn" onclick="resetInitialPosition()">Сбросить начальную позицию</button>
+                    <button class="control-btn" onclick="reconnectSensor()">Переподключиться</button>
+                </div>
+            </div>
+            
+            <!-- Центральная область с VR -->
+            <div class="main-content">
+                <div class="viewer-half" id="leftHalf">
+                    <canvas id="renderCanvasLeft"></canvas>
+                </div>
+                
+                <!-- Центральная панель -->
+                <div class="fragment fragment-center" id="fragmentCenter">
+                    VR
+                </div>
+                
+                <div class="viewer-half" id="rightHalf">
+                    <canvas id="renderCanvasRight"></canvas>
+                </div>
+                <div class="divider"></div>
+            </div>
+            
+            <!-- Правая панель -->
+            <div class="fragment fragment-right" id="fragmentRight">
+                <div class="sensor-data">
+                    <div>Статус: <span class="sensor-value" id="connectionStatusText">Отключен</span></div>
+                    <div>Порт: <span class="sensor-value" id="portValue">-</span></div>
+                    <div>Ноль установлен: <span class="sensor-value" id="zeroStatus">нет</span></div>
+                    <div>Космический Yaw: <span class="sensor-value" id="spacecraftYawValue">0°</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script>
+        // Глобальные переменные
+        let serialPort = null;
+        let reader = null;
+        let writer = null;
+        let isConnected = false;
+        let isPaused = false;
+        let headTrackingEnabled = true;
+        let stereoSeparation = 0.5;
+        let sessionStartTime = Date.now();
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let dataBuffer = '';
+        
+        // Данные с датчика
+        let sensorData = {
+            pitch: 0,
+            roll: 0,
+            yaw: 0,
+            spacecraft_yaw: 0,
+            zeroSet: false,
+            lastUpdate: 0
+        };
+
+        // Относительное положение
+        let relativeOrientation = {
+            initialYaw: 0,
+            relativeYaw: 0,
+            pitch: 0,
+            roll: 0,
+            isInitialized: false
+        };
+
+        // Текущая ориентация камеры
+        let currentOrientation = {
+            yaw: 0,
+            pitch: 0,
+            roll: 0
+        };
+
+        // Класс для управления COM-портом
+        class SerialConnection {
+            constructor() {
+                this.port = null;
+                this.reader = null;
+                this.writer = null;
+                this.isConnected = false;
+                this.dataBuffer = '';
+                this.init();
+            }
+            
+            init() {
+                // Проверка совместимости
+                this.checkCompatibility();
+                
+                // Настройка обработчиков событий
+                document.getElementById('connectBtn').addEventListener('click', () => this.connect());
+                document.getElementById('disconnectBtn').addEventListener('click', () => this.disconnect());
+                document.getElementById('refreshPorts').addEventListener('click', () => this.refreshPorts());
+                
+                this.updateUI();
+            }
+            
+            checkCompatibility() {
+                if (!('serial' in navigator)) {
+                    document.getElementById('compatibilityWarning').classList.add('show');
+                    document.getElementById('connectBtn').disabled = true;
+                    this.showNotification('Ваш браузер не поддерживает Web Serial API. Используйте Chrome 89+ или Edge 79+', 'error');
+                    return false;
+                }
+                return true;
+            }
+            
+            showNotification(message, type = 'info') {
+                console.log(`[${type.toUpperCase()}] ${message}`);
+            }
+            
+            async refreshPorts() {
+                try {
+                    const ports = await navigator.serial.getPorts();
+                    this.displayPorts(ports);
+                    this.showNotification('Список портов обновлен', 'info');
+                } catch (error) {
+                    console.error('Ошибка при обновлении списка портов:', error);
+                    this.showNotification('Ошибка при обновлении списка портов', 'error');
+                }
+            }
+            
+            displayPorts(ports) {
+                const portList = document.getElementById('portList');
+                
+                if (ports.length === 0) {
+                    portList.innerHTML = '<div class="port-item">COM-порты не обнаружены</div>';
+                    return;
+                }
+                
+                let html = '';
+                ports.forEach((port, index) => {
+                    const portInfo = port.getInfo();
+                    html += `
+                        <div class="port-item" data-index="${index}">
+                            <strong>Порт ${index + 1}</strong><br>
+                            <small>VID: ${portInfo.usbVendorId || 'N/A'}, PID: ${portInfo.usbProductId || 'N/A'}</small>
+                        </div>
+                    `;
+                });
+                
+                portList.innerHTML = html;
+                
+                const portItems = portList.querySelectorAll('.port-item');
+                portItems.forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        portItems.forEach(i => i.classList.remove('selected'));
+                        e.currentTarget.classList.add('selected');
+                    });
+                });
+            }
+            
+            async connect() {
+                try {
+                    // Запрос выбора порта
+                    this.port = await navigator.serial.requestPort();
+                    
+                    // Открытие порта с параметрами из скетча
+                    await this.port.open({
+                        baudRate: 115200, // Скорость из скетча
+                        dataBits: 8,
+                        stopBits: 1,
+                        parity: 'none',
+                        flowControl: 'none'
+                    });
+                    
+                    this.isConnected = true;
+                    serialPort = this.port;
+                    isConnected = true;
+                    
+                    this.updateUI();
+                    this.showNotification('Подключено к COM-порту (115200 бод)', 'success');
+                    
+                    // Обновление информации о порте
+                    const portInfo = this.port.getInfo();
+                    document.getElementById('portValue').textContent = 
+                        `VID: ${portInfo.usbVendorId || 'N/A'}, PID: ${portInfo.usbProductId || 'N/A'}`;
+                    
+                    // Начало чтения данных
+                    this.readData();
+                    
+                } catch (error) {
+                    console.error('Ошибка подключения:', error);
+                    this.showNotification(`Ошибка подключения: ${error.message}`, 'error');
+                }
+            }
+            
+            async disconnect() {
+                try {
+                    if (this.reader) {
+                        this.reader.cancel();
+                    }
+                    
+                    if (this.writer) {
+                        await this.writer.close();
+                    }
+                    
+                    if (this.port) {
+                        await this.port.close();
+                    }
+                    
+                    this.isConnected = false;
+                    serialPort = null;
+                    isConnected = false;
+                    
+                    this.updateUI();
+                    this.showNotification('Отключено от COM-порта', 'info');
+                    
+                    document.getElementById('portValue').textContent = '-';
+                    
+                } catch (error) {
+                    console.error('Ошибка отключения:', error);
+                    this.showNotification('Ошибка при отключении', 'error');
+                }
+            }
+            
+            async readData() {
+                const textDecoder = new TextDecoder();
+                
+                try {
+                    while (this.port.readable && this.isConnected) {
+                        this.reader = this.port.readable.getReader();
+                        
+                        try {
+                            while (true) {
+                                const { value, done } = await this.reader.read();
+                                
+                                if (done) {
+                                    break;
+                                }
+                                
+                                if (value && !isPaused) {
+                                    this.processData(value, textDecoder);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Ошибка чтения:', error);
+                        } finally {
+                            this.reader.releaseLock();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка в цикле чтения:', error);
+                }
+            }
+            
+            processData(data, textDecoder) {
+                try {
+                    const decodedData = textDecoder.decode(data);
+                    dataBuffer += decodedData;
+                    
+                    // Обработка полных строк
+                    const lines = dataBuffer.split('\n');
+                    dataBuffer = lines.pop() || '';
+                    
+                    lines.forEach(line => {
+                        line = line.trim();
+                        if (line) {
+                            this.processLine(line);
+                        }
+                    });
+                    
+                } catch (e) {
+                    console.error('Ошибка декодирования данных:', e);
+                }
+            }
+            
+            processLine(line) {
+                try {
+                    const data = JSON.parse(line);
+                    
+                    if (data.type === 'sensorData') {
+                        // Обновление данных сенсора
+                        sensorData.pitch = data.pitch || 0;
+                        sensorData.roll = data.roll || 0;
+                        sensorData.yaw = data.yaw || 0;
+                        sensorData.spacecraft_yaw = data.spacecraftYaw || 0;
+                        sensorData.zeroSet = data.zeroSet || false;
+                        sensorData.lastUpdate = Date.now();
+                        
+                        // Обновление относительного положения
+                        updateRelativeOrientation(sensorData.pitch, sensorData.roll, sensorData.yaw);
+                        
+                        // Обновление UI
+                        updateSensorUI(data);
+                        
+                    } else if (data.type === 'status') {
+                        console.log('Статус:', data.message);
+                    } else if (data.type === 'zeroInfo') {
+                        sensorData.zeroSet = true;
+                        document.getElementById('zeroStatus').textContent = 'да';
+                        console.log('Точка нуля установлена');
+                    } else if (data.type === 'zeroReset') {
+                        sensorData.zeroSet = false;
+                        document.getElementById('zeroStatus').textContent = 'нет';
+                        console.log('Точка нуля сброшена');
+                    }
+                    
+                } catch (error) {
+                    console.error('Ошибка парсинга JSON:', error, 'Строка:', line);
+                }
+            }
+            
+            async sendCommand(command) {
+                if (!this.isConnected || !this.port) {
+                    this.showNotification('Сначала подключитесь к порту', 'error');
+                    return;
+                }
+                
+                try {
+                    const textEncoder = new TextEncoder();
+                    this.writer = this.port.writable.getWriter();
+                    
+                    // Отправка команды с переводом строки
+                    await this.writer.write(textEncoder.encode(command + '\n'));
+                    
+                    // Освобождение writer
+                    this.writer.releaseLock();
+                    
+                    this.showNotification(`Команда отправлена: ${command}`, 'success');
+                    
+                } catch (error) {
+                    console.error('Ошибка отправки команды:', error);
+                    this.showNotification('Ошибка отправки команды', 'error');
+                }
+            }
+            
+            updateUI() {
+                const connectBtn = document.getElementById('connectBtn');
+                const disconnectBtn = document.getElementById('disconnectBtn');
+                const statusDiv = document.getElementById('connectionStatus');
+                const statusText = document.getElementById('connectionStatusText');
+                
+                if (this.isConnected) {
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    statusDiv.textContent = 'Подключено';
+                    statusDiv.className = 'connection-status connected';
+                    statusText.textContent = 'Подключено';
+                } else {
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    statusDiv.textContent = 'Не подключено';
+                    statusDiv.className = 'connection-status disconnected';
+                    statusText.textContent = 'Отключено';
+                }
+            }
+        }
+
+        // Функции для работы с данными сенсора
+        function degreesToRadians(degrees) {
+            return degrees * (Math.PI / 180);
+        }
+
+        function normalizeAngle(angle) {
+            while (angle > 180) angle -= 360;
+            while (angle < -180) angle += 360;
+            return angle;
+        }
+
+        function updateRelativeOrientation(rawPitch, rawRoll, rawYaw) {
+            if (!relativeOrientation.isInitialized) {
+                relativeOrientation.initialYaw = rawYaw;
+                relativeOrientation.relativeYaw = 0;
+                relativeOrientation.pitch = rawPitch;
+                relativeOrientation.roll = rawRoll;
+                relativeOrientation.isInitialized = true;
+                
+                document.getElementById('initialYawValue').textContent = rawYaw.toFixed(1) + '°';
+                console.log('Начальная позиция установлена. Yaw:', rawYaw.toFixed(1));
+            } else {
+                const yawDifference = normalizeAngle(rawYaw - relativeOrientation.initialYaw);
+                relativeOrientation.relativeYaw = yawDifference;
+                relativeOrientation.pitch = rawPitch;
+                relativeOrientation.roll = rawRoll;
+            }
+            
+            document.getElementById('pitchValue').textContent = relativeOrientation.pitch.toFixed(1) + '°';
+            document.getElementById('rollValue').textContent = relativeOrientation.roll.toFixed(1) + '°';
+            document.getElementById('yawValue').textContent = rawYaw.toFixed(1) + '°';
+            document.getElementById('relativeYawValue').textContent = relativeOrientation.relativeYaw.toFixed(1) + '°';
+        }
+
+        function updateSensorUI(data) {
+            // Обновление космического Yaw
+            if (data.spacecraftYaw !== undefined) {
+                document.getElementById('spacecraftYawValue').textContent = data.spacecraftYaw.toFixed(1) + '°';
+            }
+            
+            // Обновление статуса нуля
+            document.getElementById('zeroStatus').textContent = data.zeroSet ? 'да' : 'нет';
+            document.getElementById('zeroStatus').style.color = data.zeroSet ? '#4CAF50' : '#f44336';
+        }
+
+        function resetInitialPosition() {
+            if (sensorData.lastUpdate > 0) {
+                relativeOrientation.initialYaw = sensorData.yaw;
+                relativeOrientation.relativeYaw = 0;
+                relativeOrientation.isInitialized = true;
+                
+                document.getElementById('initialYawValue').textContent = sensorData.yaw.toFixed(1) + '°';
+                document.getElementById('relativeYawValue').textContent = '0°';
+                console.log('Начальная позиция сброшена. Новый Yaw:', sensorData.yaw.toFixed(1));
+            }
+        }
+
+        function reconnectSensor() {
+            if (window.serialConnection) {
+                window.serialConnection.disconnect();
+                setTimeout(() => window.serialConnection.connect(), 500);
+            }
+        }
+
+        function sendCommand(command) {
+            if (window.serialConnection) {
+                window.serialConnection.sendCommand(command);
+            }
+        }
+
+        // Инициализация Babylon.js сцен
+        document.addEventListener('DOMContentLoaded', function() {
+            // Инициализация подключения к COM-порту
+            window.serialConnection = new SerialConnection();
+            
+            // Получаем элементы DOM
+            const canvasLeft = document.getElementById('renderCanvasLeft');
+            const canvasRight = document.getElementById('renderCanvasRight');
+            const loadingElement = document.getElementById('loading');
+            
+            const fragments = {
+                left: document.getElementById('fragmentLeft'),
+                right: document.getElementById('fragmentRight'),
+                center: document.getElementById('fragmentCenter')
+            };
+            
+            const leftHalf = document.getElementById('leftHalf');
+            const rightHalf = document.getElementById('rightHalf');
+            const mainContent = document.querySelector('.main-content');
+            const viewerRow = document.querySelector('.viewer-row');
+            
+            // Функция для обновления размеров элементов
+            function updateLayout() {
+                let availableWidth = window.innerWidth;
+                let availableHeight = window.innerHeight;
+                
+                if (fragments.left) {
+                    fragments.left.style.width = '300px';
+                }
+                
+                if (fragments.right) {
+                    fragments.right.style.width = '300px';
+                }
+                
+                if (viewerRow) viewerRow.style.height = availableHeight + 'px';
+                if (mainContent) mainContent.style.width = (availableWidth - 650) + 'px';
+                
+                const centerWidth = 50;
+                const availableContentWidth = (availableWidth - 650) - centerWidth;
+                
+                if (leftHalf) leftHalf.style.width = (availableContentWidth / 2) + 'px';
+                if (rightHalf) rightHalf.style.width = (availableContentWidth / 2) + 'px';
+                if (fragments.center) {
+                    fragments.center.style.width = centerWidth + 'px';
+                }
+            }
+            
+            updateLayout();
+            
+            // Создаем движки Babylon.js
+            const engineLeft = new BABYLON.Engine(canvasLeft, true);
+            const engineRight = new BABYLON.Engine(canvasRight, true);
+            
+            // Расстояние между глазами
+            const baseEyeDistance = 0.5;
+            const headRadius = 2.0;
+            
+            // Создаем сцену
+            const createScene = function(engine, isLeftEye) {
+                const scene = new BABYLON.Scene(engine);
+                
+                // Создаем камеру
+                const camera = new BABYLON.FreeCamera(
+                    isLeftEye ? "cameraLeft" : "cameraRight", 
+                    new BABYLON.Vector3(0, 0, 0), 
+                    scene
+                );
+                
+                camera.position = new BABYLON.Vector3(0, 0, -10);
+                camera.inputs.clear();
+                camera.inertia = 0.9;
+                
+                // Создаем свет
+                const light = new BABYLON.HemisphericLight(
+                    "light", 
+                    new BABYLON.Vector3(0, 1, 0), 
+                    scene
+                );
+                light.intensity = 0.3;
+                
+                // Создаем сферу для панорамы
+                const sphere = BABYLON.MeshBuilder.CreateSphere(
+                    "sphere", 
+                    { diameter: 100, segments: 64 }, 
+                    scene
+                );
+                
+                sphere.flipFaces(true);
+                
+                // Создаем материал для сферы
+                const material = new BABYLON.StandardMaterial("panoramaMaterial", scene);
+                
+                // Загружаем текстуру
+                material.diffuseTexture = new BABYLON.Texture(
+                    "PIC_20250412_131142.jpg", 
+                    scene
+                );
+                
+                material.diffuseTexture.uScale = 1;
+                material.diffuseTexture.vScale = -1;
+                material.backFaceCulling = false;
+                material.specularColor = new BABYLON.Color3(0, 0, 0);
+                material.emissiveColor = new BABYLON.Color3(1, 1, 1);
+                
+                sphere.material = material;
+                
+                return {scene, camera, sphere};
+            };
+            
+            // Создаем сцены для левого и правого глаза
+            const sceneLeft = createScene(engineLeft, true);
+            const sceneRight = createScene(engineRight, false);
+            
+            // Функция обновления камер на основе данных датчика
+            function updateCameraFromSensor() {
+                if (!headTrackingEnabled || !relativeOrientation.isInitialized) return;
+                
+                const now = Date.now();
+                if (now - sensorData.lastUpdate > 1000) return;
+                
+                const relativeYaw = relativeOrientation.relativeYaw;
+                const absolutePitch = relativeOrientation.pitch;
+                const absoluteRoll = relativeOrientation.roll;
+                
+                const pitchRad = degreesToRadians(absolutePitch);
+                const yawRad = degreesToRadians(relativeYaw);
+                const rollRad = degreesToRadians(absoluteRoll);
+                
+                // Создаем кватернион для вращения головы
+                const headRotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(
+                    -yawRad,
+                    -pitchRad,
+                    0
+                );
+                
+                // Применяем стерео разделение с учетом наклона головы
+                const baseEyeOffset = baseEyeDistance * stereoSeparation;
+                const rollCos = Math.cos(rollRad);
+                const rollSin = Math.sin(rollRad);
+                
+                const eyeOffsetX = baseEyeOffset * rollCos;
+                const eyeOffsetY = baseEyeOffset * rollSin;
+                
+                // Создаем кватернион для наклона головы
+                const rollQuaternion = BABYLON.Quaternion.RotationAxis(
+                    new BABYLON.Vector3(0, 0, 1),
+                    -rollRad
+                );
+                
+                // Комбинируем вращения
+                const finalRotationQuaternion = headRotationQuaternion.multiply(rollQuaternion);
+                
+                // Обновляем позиции и вращения камер
+                if (headTrackingEnabled) {
+                    sceneLeft.camera.rotationQuaternion = finalRotationQuaternion.clone();
+                    sceneLeft.camera.position.x = -eyeOffsetX;
+                    sceneLeft.camera.position.y = -eyeOffsetY;
+                    
+                    sceneRight.camera.rotationQuaternion = finalRotationQuaternion.clone();
+                    sceneRight.camera.position.x = eyeOffsetX;
+                    sceneRight.camera.position.y = eyeOffsetY;
+                }
+                
+                currentOrientation.yaw = relativeYaw;
+                currentOrientation.pitch = absolutePitch;
+                currentOrientation.roll = absoluteRoll;
+            }
+            
+            // Скрываем индикатор загрузки после полной загрузки сцен
+            let scenesLoaded = 0;
+            const totalScenes = 2;
+            
+            const checkScenesLoaded = function() {
+                scenesLoaded++;
+                if (scenesLoaded === totalScenes) {
+                    setTimeout(() => {
+                        if (loadingElement) {
+                            loadingElement.style.display = 'none';
+                        }
+                    }, 500);
+                }
+            };
+            
+            sceneLeft.scene.executeWhenReady(checkScenesLoaded);
+            sceneRight.scene.executeWhenReady(checkScenesLoaded);
+            
+            // Обработка изменения размера окна
+            window.addEventListener('resize', function() {
+                updateLayout();
+                engineLeft.resize();
+                engineRight.resize();
+            });
+            
+            // Запускаем рендеринг для обеих сцен
+            engineLeft.runRenderLoop(function() {
+                updateCameraFromSensor();
+                sceneLeft.scene.render();
+                frameCount++;
+                updateFPS();
+            });
+            
+            engineRight.runRenderLoop(function() {
+                updateCameraFromSensor();
+                sceneRight.scene.render();
+            });
+        });
+        
+        function updateFPS() {
+            const now = Date.now();
+            if (now - lastFpsUpdate >= 1000) {
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+        }
+    </script>
+</body>
+</html>

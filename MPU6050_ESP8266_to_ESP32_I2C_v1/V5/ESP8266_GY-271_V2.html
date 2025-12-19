@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Визуализация датчика GY-271</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .left-panel {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            color: #00d4ff;
+        }
+        
+        .subtitle {
+            color: #8a8aff;
+            font-size: 14px;
+        }
+        
+        h2 {
+            color: #00d4ff;
+            margin: 20px 0 15px 0;
+            font-size: 18px;
+            border-bottom: 2px solid #00d4ff;
+            padding-bottom: 5px;
+        }
+        
+        .compatibility-warning {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #ffc107;
+            color: #ffc107;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        .port-selector {
+            margin-bottom: 20px;
+        }
+        
+        .port-list {
+            max-height: 150px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            margin: 10px 0;
+            padding: 5px;
+        }
+        
+        .port-item {
+            padding: 8px 10px;
+            margin: 3px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .port-item:hover {
+            background: rgba(0, 212, 255, 0.2);
+        }
+        
+        .port-item.selected {
+            background: rgba(0, 212, 255, 0.3);
+            border: 1px solid #00d4ff;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #0066ff, #00d4ff);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px 0;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-success {
+            background: linear-gradient(45deg, #00b894, #00d4ff);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(45deg, #e84118, #ff3838);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(45deg, #fdcb6e, #e17055);
+        }
+        
+        .connection-status {
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .connected {
+            background: rgba(0, 184, 148, 0.3);
+            border: 1px solid #00b894;
+        }
+        
+        .disconnected {
+            background: rgba(232, 65, 24, 0.3);
+            border: 1px solid #e84118;
+        }
+        
+        .data-display {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-y: auto;
+            max-height: 200px;
+            margin-bottom: 15px;
+        }
+        
+        #rendererContainer {
+            flex: 1;
+            position: relative;
+            background: #0a0a1a;
+        }
+        
+        #scene3d {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .data-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .data-label {
+            font-size: 11px;
+            color: #8a8aff;
+            margin-bottom: 3px;
+        }
+        
+        .data-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        
+        .compass {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin: 20px auto;
+        }
+        
+        .compass-circle {
+            width: 100%;
+            height: 100%;
+            border: 2px solid #00d4ff;
+            border-radius: 50%;
+            position: relative;
+        }
+        
+        .compass-needle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 45%;
+            background: #ff3838;
+            transform-origin: bottom center;
+            transform: translateX(-50%) rotate(0deg);
+            transition: transform 0.5s ease-out;
+        }
+        
+        .compass-needle::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -3px;
+            width: 8px;
+            height: 8px;
+            background: #ff3838;
+            border-radius: 50%;
+        }
+        
+        .compass-direction {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 14px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        
+        .direction-points {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .direction-point {
+            position: absolute;
+            color: #8a8aff;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            min-width: 300px;
+        }
+        
+        .notification.show {
+            opacity: 1;
+        }
+        
+        .notification.success {
+            background: rgba(0, 184, 148, 0.9);
+            border: 1px solid #00b894;
+        }
+        
+        .notification.error {
+            background: rgba(232, 65, 24, 0.9);
+            border: 1px solid #e84118;
+        }
+        
+        .notification.info {
+            background: rgba(0, 212, 255, 0.9);
+            border: 1px solid #00d4ff;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-online {
+            background: #00b894;
+            box-shadow: 0 0 10px #00b894;
+        }
+        
+        .status-offline {
+            background: #e84118;
+        }
+        
+        .control-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .control-row .btn {
+            flex: 1;
+        }
+        
+        .axis-indicators {
+            display: flex;
+            justify-content: space-around;
+            margin: 15px 0;
+        }
+        
+        .axis {
+            text-align: center;
+        }
+        
+        .axis-label {
+            font-size: 12px;
+            color: #8a8aff;
+        }
+        
+        .axis-value {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .axis-x { color: #ff3838; }
+        .axis-y { color: #00b894; }
+        .axis-z { color: #0066ff; }
+        
+        .stats {
+            font-size: 11px;
+            color: #8a8aff;
+            margin-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <h2>Управление подключением</h2>
+            
+            <div class="compatibility-warning" id="compatibilityWarning">
+                <strong>Внимание:</strong> Для работы необходим браузер с поддержкой Web Serial API (Chrome 89+, Edge 79+)
+            </div>
+            
+            <div class="port-selector">
+                <label>Доступные COM-порты:</label>
+                <div class="port-list" id="portList">
+                    <div class="port-item">Обновите список портов</div>
+                </div>
+                <button class="btn btn-warning" id="refreshPorts">Обновить список портов</button>
+            </div>
+            
+            <div class="connection-controls">
+                <div class="control-row">
+                    <button class="btn btn-success" id="connectBtn">Подключиться</button>
+                    <button class="btn btn-danger" id="disconnectBtn" disabled>Отключиться</button>
+                </div>
+                
+                <div class="connection-status disconnected" id="connectionStatus">
+                    <span class="status-indicator status-offline"></span>
+                    Не подключено
+                </div>
+            </div>
+            
+            <h2>Ориентация датчика</h2>
+            
+            <div class="compass">
+                <div class="compass-circle">
+                    <div class="direction-points">
+                        <div class="direction-point" style="top: 10%; left: 50%; transform: translateX(-50%);">N</div>
+                        <div class="direction-point" style="top: 50%; right: 10%;">E</div>
+                        <div class="direction-point" style="bottom: 10%; left: 50%; transform: translateX(-50%);">S</div>
+                        <div class="direction-point" style="top: 50%; left: 10%;">W</div>
+                    </div>
+                    <div class="compass-needle" id="compassNeedle"></div>
+                    <div class="compass-direction" id="compassDirection">N</div>
+                </div>
+            </div>
+            
+            <div class="data-grid">
+                <div class="data-item">
+                    <div class="data-label">Pitch (Тангаж)</div>
+                    <div class="data-value" id="pitchValue">0.00°</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Roll (Крен)</div>
+                    <div class="data-value" id="rollValue">0.00°</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Tilt (Наклон)</div>
+                    <div class="data-value" id="tiltValue">0.00°</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Азимут</div>
+                    <div class="data-value" id="azimuthValue">0°</div>
+                </div>
+            </div>
+            
+            <div class="axis-indicators">
+                <div class="axis">
+                    <div class="axis-label">X</div>
+                    <div class="axis-value axis-x" id="axisX">0</div>
+                </div>
+                <div class="axis">
+                    <div class="axis-label">Y</div>
+                    <div class="axis-value axis-y" id="axisY">0</div>
+                </div>
+                <div class="axis">
+                    <div class="axis-label">Z</div>
+                    <div class="axis-value axis-z" id="axisZ">0</div>
+                </div>
+            </div>
+            
+            <h2>Статус</h2>
+            <div class="data-display" id="dataDisplay">
+                Ожидание данных с датчика...
+            </div>
+            
+            <div class="control-row">
+                <button class="btn btn-warning" id="pauseResume">Приостановить</button>
+                <button class="btn" id="clearData">Очистить</button>
+            </div>
+            
+            <div class="stats">
+                <div>Получено сообщений: <span id="messageCount">0</span></div>
+                <div>Статус: <span id="currentStatus">Ожидание</span></div>
+                <div>Последнее обновление: <span id="lastUpdate">-</span></div>
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <header>
+                <h1>3D Визуализация датчика GY-271 QMC5883L</h1>
+                <div class="subtitle">Реальное отображение положения в пространстве</div>
+            </header>
+            
+            <div id="rendererContainer">
+                <div id="scene3d"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="notification" id="notification"></div>
+
+    <script>
+        class SensorVisualizer3D {
+            constructor() {
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.cube = null;
+                this.axes = null;
+                this.earth = null;
+                this.lights = [];
+                this.controls = null;
+                
+                this.currentPitch = 0;
+                this.currentRoll = 0;
+                this.currentAzimuth = 0;
+                
+                this.init3DScene();
+                this.animate();
+            }
+            
+            init3DScene() {
+                const container = document.getElementById('scene3d');
+                
+                // Создание сцены
+                this.scene = new THREE.Scene();
+                this.scene.fog = new THREE.Fog(0x0a0a1a, 1, 100);
+                
+                // Создание камеры
+                this.camera = new THREE.PerspectiveCamera(
+                    60,
+                    container.clientWidth / container.clientHeight,
+                    0.1,
+                    1000
+                );
+                this.camera.position.set(5, 5, 5);
+                this.camera.lookAt(0, 0, 0);
+                
+                // Создание рендерера
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(container.clientWidth, container.clientHeight);
+                this.renderer.setClearColor(0x0a0a1a);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                container.appendChild(this.renderer.domElement);
+                
+                // Освещение
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+                this.scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 10);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.camera.left = -10;
+                directionalLight.shadow.camera.right = 10;
+                directionalLight.shadow.camera.top = 10;
+                directionalLight.shadow.camera.bottom = -10;
+                this.scene.add(directionalLight);
+                this.lights.push(directionalLight);
+                
+                // Создание куба датчика
+                this.createSensorCube();
+                
+                // Создание осей
+                this.createAxes();
+                
+                // Создание плоскости земли
+                this.createEarthPlane();
+                
+                // Создание сетки
+                this.createGrid();
+                
+                // Обработка изменения размера окна
+                window.addEventListener('resize', () => this.onWindowResize());
+            }
+            
+            createSensorCube() {
+                // Основной куб
+                const geometry = new THREE.BoxGeometry(2, 2, 2);
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: 0x0066ff,
+                    transparent: true,
+                    opacity: 0.8,
+                    specular: 0x555555,
+                    shininess: 100
+                });
+                
+                this.cube = new THREE.Mesh(geometry, material);
+                this.cube.castShadow = true;
+                this.scene.add(this.cube);
+                
+                // Добавление надписей на гранях куба
+                this.addCubeLabels();
+                
+                // Добавление стрелок направления
+                this.addDirectionArrows();
+            }
+            
+            addCubeLabels() {
+                // Создаем текстуры для каждой грани
+                const faces = ['X+', 'X-', 'Y+', 'Y-', 'Z+', 'Z-'];
+                const colors = [0xff3838, 0xff3838, 0x00b894, 0x00b894, 0x0066ff, 0x0066ff];
+                
+                for (let i = 0; i < faces.length; i++) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 256;
+                    canvas.height = 256;
+                    const context = canvas.getContext('2d');
+                    
+                    // Фон
+                    context.fillStyle = `rgba(${colors[i] >> 16}, ${(colors[i] >> 8) & 255}, ${colors[i] & 255}, 0.2)`;
+                    context.fillRect(0, 0, 256, 256);
+                    
+                    // Текст
+                    context.font = 'bold 80px Arial';
+                    context.textAlign = 'center';
+                    context.textBaseline = 'middle';
+                    context.fillStyle = `rgb(${colors[i] >> 16}, ${(colors[i] >> 8) & 255}, ${colors[i] & 255})`;
+                    context.fillText(faces[i], 128, 128);
+                    
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const material = new THREE.MeshBasicMaterial({ map: texture });
+                    
+                    const planeGeometry = new THREE.PlaneGeometry(1.8, 1.8);
+                    const plane = new THREE.Mesh(planeGeometry, material);
+                    
+                    // Размещаем плоскости на соответствующих гранях
+                    switch(i) {
+                        case 0: // X+
+                            plane.position.set(1, 0, 0);
+                            plane.rotation.y = Math.PI / 2;
+                            break;
+                        case 1: // X-
+                            plane.position.set(-1, 0, 0);
+                            plane.rotation.y = -Math.PI / 2;
+                            break;
+                        case 2: // Y+
+                            plane.position.set(0, 1, 0);
+                            plane.rotation.x = -Math.PI / 2;
+                            break;
+                        case 3: // Y-
+                            plane.position.set(0, -1, 0);
+                            plane.rotation.x = Math.PI / 2;
+                            break;
+                        case 4: // Z+
+                            plane.position.set(0, 0, 1);
+                            break;
+                        case 5: // Z-
+                            plane.position.set(0, 0, -1);
+                            plane.rotation.y = Math.PI;
+                            break;
+                    }
+                    
+                    this.cube.add(plane);
+                }
+            }
+            
+            addDirectionArrows() {
+                // Стрелки направления
+                const arrowLength = 3;
+                const arrowHeadLength = 0.5;
+                const arrowHeadWidth = 0.3;
+                
+                // X (красный)
+                const arrowX = new THREE.ArrowHelper(
+                    new THREE.Vector3(1, 0, 0),
+                    new THREE.Vector3(0, 0, 0),
+                    arrowLength,
+                    0xff3838,
+                    arrowHeadLength,
+                    arrowHeadWidth
+                );
+                this.cube.add(arrowX);
+                
+                // Y (зеленый)
+                const arrowY = new THREE.ArrowHelper(
+                    new THREE.Vector3(0, 1, 0),
+                    new THREE.Vector3(0, 0, 0),
+                    arrowLength,
+                    0x00b894,
+                    arrowHeadLength,
+                    arrowHeadWidth
+                );
+                this.cube.add(arrowY);
+                
+                // Z (синий)
+                const arrowZ = new THREE.ArrowHelper(
+                    new THREE.Vector3(0, 0, 1),
+                    new THREE.Vector3(0, 0, 0),
+                    arrowLength,
+                    0x0066ff,
+                    arrowHeadLength,
+                    arrowHeadWidth
+                );
+                this.cube.add(arrowZ);
+            }
+            
+            createAxes() {
+                // Оси координат
+                this.axes = new THREE.AxesHelper(5);
+                this.scene.add(this.axes);
+            }
+            
+            createEarthPlane() {
+                // Плоскость земли
+                const planeGeometry = new THREE.PlaneGeometry(20, 20);
+                const planeMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x1a5f1a,
+                    side: THREE.DoubleSide,
+                    opacity: 0.7,
+                    transparent: true
+                });
+                
+                this.earth = new THREE.Mesh(planeGeometry, planeMaterial);
+                this.earth.rotation.x = -Math.PI / 2;
+                this.earth.position.y = -3;
+                this.earth.receiveShadow = true;
+                this.scene.add(this.earth);
+                
+                // Сетка на плоскости
+                const gridHelper = new THREE.GridHelper(20, 20, 0x00ff00, 0x008800);
+                gridHelper.position.y = -3;
+                this.scene.add(gridHelper);
+            }
+            
+            createGrid() {
+                // Дополнительная сетка в пространстве
+                const grid = new THREE.GridHelper(20, 20, 0x0088ff, 0x004488);
+                grid.position.y = -3;
+                this.scene.add(grid);
+            }
+            
+            updateSensorOrientation(pitch, roll, azimuth) {
+                // Обновляем углы
+                this.currentPitch = pitch;
+                this.currentRoll = roll;
+                this.currentAzimuth = azimuth;
+                
+                // Конвертируем градусы в радианы
+                const pitchRad = pitch * (Math.PI / 180);
+                const rollRad = roll * (Math.PI / 180);
+                const azimuthRad = azimuth * (Math.PI / 180);
+                
+                // Вращаем куб
+                this.cube.rotation.x = pitchRad;
+                this.cube.rotation.z = rollRad;
+                this.cube.rotation.y = -azimuthRad;
+                
+                // Вращаем камеру вокруг куба
+                const radius = 8;
+                const time = Date.now() * 0.0005;
+                const camX = Math.sin(time) * radius;
+                const camZ = Math.cos(time) * radius;
+                this.camera.position.set(camX, 5, camZ);
+                this.camera.lookAt(0, 0, 0);
+            }
+            
+            onWindowResize() {
+                const container = document.getElementById('scene3d');
+                this.camera.aspect = container.clientWidth / container.clientHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+            
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                
+                // Плавная анимация камеры
+                const time = Date.now() * 0.0005;
+                const radius = 8;
+                const camX = Math.sin(time) * radius;
+                const camZ = Math.cos(time) * radius;
+                
+                this.camera.position.x += (camX - this.camera.position.x) * 0.05;
+                this.camera.position.z += (camZ - this.camera.position.z) * 0.05;
+                this.camera.lookAt(0, 0, 0);
+                
+                // Легкое вращение света
+                this.lights.forEach((light, index) => {
+                    if (light.position) {
+                        light.position.x = Math.sin(time + index) * 15;
+                        light.position.z = Math.cos(time + index) * 15;
+                    }
+                });
+                
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        class COMPortManager {
+            constructor() {
+                this.port = null;
+                this.reader = null;
+                this.isConnected = false;
+                this.isPaused = false;
+                this.messageCount = 0;
+                this.dataBuffer = '';
+                this.visualizer = new SensorVisualizer3D();
+                
+                this.checkCompatibility();
+                this.init();
+            }
+            
+            checkCompatibility() {
+                if (!('serial' in navigator)) {
+                    document.getElementById('compatibilityWarning').style.display = 'block';
+                    document.getElementById('connectBtn').disabled = true;
+                    this.showNotification('Ваш браузер не поддерживает Web Serial API', 'error');
+                    return false;
+                }
+                return true;
+            }
+            
+            init() {
+                document.getElementById('connectBtn').addEventListener('click', () => this.connect());
+                document.getElementById('disconnectBtn').addEventListener('click', () => this.disconnect());
+                document.getElementById('refreshPorts').addEventListener('click', () => this.updatePortList());
+                document.getElementById('clearData').addEventListener('click', () => this.clearData());
+                document.getElementById('pauseResume').addEventListener('click', () => this.togglePause());
+                
+                this.updatePortList();
+                this.updateUI();
+            }
+            
+            async updatePortList() {
+                try {
+                    const ports = await navigator.serial.getPorts();
+                    const portList = document.getElementById('portList');
+                    
+                    if (ports.length === 0) {
+                        portList.innerHTML = '<div class="port-item">COM-порты не обнаружены</div>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    ports.forEach((port, index) => {
+                        const info = port.getInfo();
+                        html += `
+                            <div class="port-item" data-index="${index}">
+                                Порт ${index + 1} (Vendor: ${info.usbVendorId || 'N/A'})
+                            </div>
+                        `;
+                    });
+                    
+                    portList.innerHTML = html;
+                    
+                    document.querySelectorAll('.port-item').forEach(item => {
+                        item.addEventListener('click', (e) => {
+                            document.querySelectorAll('.port-item').forEach(i => i.classList.remove('selected'));
+                            e.currentTarget.classList.add('selected');
+                        });
+                    });
+                    
+                } catch (error) {
+                    console.error('Ошибка обновления портов:', error);
+                }
+            }
+            
+            async connect() {
+                try {
+                    this.port = await navigator.serial.requestPort();
+                    await this.port.open({ baudRate: 115200 });
+                    
+                    this.isConnected = true;
+                    this.updateUI();
+                    this.showNotification('Подключено к датчику GY-271', 'success');
+                    
+                    this.readData();
+                    
+                } catch (error) {
+                    console.error('Ошибка подключения:', error);
+                    this.showNotification('Ошибка подключения', 'error');
+                }
+            }
+            
+            async disconnect() {
+                try {
+                    if (this.reader) {
+                        this.reader.cancel();
+                    }
+                    
+                    if (this.port) {
+                        await this.port.close();
+                    }
+                    
+                    this.isConnected = false;
+                    this.updateUI();
+                    this.showNotification('Отключено', 'info');
+                    
+                } catch (error) {
+                    console.error('Ошибка отключения:', error);
+                }
+            }
+            
+            async readData() {
+                const textDecoder = new TextDecoder();
+                
+                try {
+                    while (this.port.readable && this.isConnected) {
+                        this.reader = this.port.readable.getReader();
+                        
+                        try {
+                            while (true) {
+                                const { value, done } = await this.reader.read();
+                                
+                                if (done) break;
+                                
+                                if (value && !this.isPaused) {
+                                    this.processData(value, textDecoder);
+                                }
+                            }
+                        } finally {
+                            this.reader.releaseLock();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка чтения:', error);
+                    if (this.isConnected) {
+                        this.showNotification('Ошибка чтения данных', 'error');
+                    }
+                }
+            }
+            
+            processData(data, textDecoder) {
+                try {
+                    const text = textDecoder.decode(data);
+                    this.dataBuffer += text;
+                    
+                    const lines = this.dataBuffer.split('\n');
+                    
+                    for (let i = 0; i < lines.length - 1; i++) {
+                        const line = lines[i].trim();
+                        if (line.startsWith('{') && line.endsWith('}')) {
+                            this.parseAndDisplayData(line);
+                        }
+                    }
+                    
+                    this.dataBuffer = lines[lines.length - 1];
+                    
+                } catch (error) {
+                    console.error('Ошибка обработки данных:', error);
+                }
+            }
+            
+            parseAndDisplayData(jsonString) {
+                try {
+                    const data = JSON.parse(jsonString);
+                    
+                    if (data.event === 'position_change') {
+                        this.messageCount++;
+                        this.updateSensorDisplay(data);
+                        this.updateLastUpdate();
+                    }
+                    
+                    // Отображаем JSON в логе
+                    const dataDisplay = document.getElementById('dataDisplay');
+                    dataDisplay.textContent = jsonString + '\n' + dataDisplay.textContent;
+                    
+                    if (dataDisplay.textContent.length > 5000) {
+                        dataDisplay.textContent = dataDisplay.textContent.substring(0, 5000);
+                    }
+                    
+                    dataDisplay.scrollTop = 0;
+                    
+                } catch (error) {
+                    console.error('Ошибка парсинга JSON:', error, jsonString);
+                }
+            }
+            
+            updateSensorDisplay(data) {
+                // Обновляем значения на дисплее
+                document.getElementById('pitchValue').textContent = data.angles.pitch.toFixed(2) + '°';
+                document.getElementById('rollValue').textContent = data.angles.roll.toFixed(2) + '°';
+                document.getElementById('tiltValue').textContent = data.angles.tilt.toFixed(2) + '°';
+                document.getElementById('azimuthValue').textContent = data.orientation.simple.toFixed(1) + '°';
+                
+                // Обновляем показания осей
+                document.getElementById('axisX').textContent = data.raw.x;
+                document.getElementById('axisY').textContent = data.raw.y;
+                document.getElementById('axisZ').textContent = data.raw.z;
+                
+                // Обновляем компас
+                this.updateCompass(data.orientation.simple, data.orientation.simple_dir);
+                
+                // Обновляем 3D визуализацию
+                this.visualizer.updateSensorOrientation(
+                    data.angles.pitch,
+                    data.angles.roll,
+                    data.orientation.simple
+                );
+                
+                // Обновляем счетчик сообщений
+                document.getElementById('messageCount').textContent = this.messageCount;
+            }
+            
+            updateCompass(azimuth, direction) {
+                const needle = document.getElementById('compassNeedle');
+                const directionText = document.getElementById('compassDirection');
+                
+                // Поворачиваем стрелку
+                needle.style.transform = `translateX(-50%) rotate(${azimuth}deg)`;
+                
+                // Обновляем текст направления
+                directionText.textContent = direction;
+                
+                // Обновляем цвет в зависимости от направления
+                const hue = (azimuth % 360) / 360 * 360;
+                directionText.style.color = `hsl(${hue}, 100%, 60%)`;
+            }
+            
+            updateLastUpdate() {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                document.getElementById('lastUpdate').textContent = timeString;
+            }
+            
+            clearData() {
+                document.getElementById('dataDisplay').textContent = '';
+                this.dataBuffer = '';
+                this.showNotification('Данные очищены', 'info');
+            }
+            
+            togglePause() {
+                this.isPaused = !this.isPaused;
+                const btn = document.getElementById('pauseResume');
+                const status = document.getElementById('currentStatus');
+                
+                if (this.isPaused) {
+                    btn.textContent = 'Возобновить';
+                    status.textContent = 'Приостановлено';
+                    btn.classList.add('btn-success');
+                    btn.classList.remove('btn-warning');
+                    this.showNotification('Чтение приостановлено', 'info');
+                } else {
+                    btn.textContent = 'Приостановить';
+                    status.textContent = 'Активно';
+                    btn.classList.add('btn-warning');
+                    btn.classList.remove('btn-success');
+                    this.showNotification('Чтение возобновлено', 'success');
+                }
+            }
+            
+            updateUI() {
+                const connectBtn = document.getElementById('connectBtn');
+                const disconnectBtn = document.getElementById('disconnectBtn');
+                const statusDiv = document.getElementById('connectionStatus');
+                const statusIndicator = statusDiv.querySelector('.status-indicator');
+                const currentStatus = document.getElementById('currentStatus');
+                
+                if (this.isConnected) {
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    statusDiv.textContent = ' Подключено';
+                    statusDiv.className = 'connection-status connected';
+                    statusIndicator.className = 'status-indicator status-online';
+                    currentStatus.textContent = 'Активно';
+                } else {
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    statusDiv.textContent = ' Не подключено';
+                    statusDiv.className = 'connection-status disconnected';
+                    statusIndicator.className = 'status-indicator status-offline';
+                    currentStatus.textContent = 'Ожидание';
+                }
+            }
+            
+            showNotification(message, type = 'info') {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.className = `notification ${type} show`;
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+        }
+
+        // Инициализация приложения
+        document.addEventListener('DOMContentLoaded', () => {
+            window.comPortManager = new COMPortManager();
+        });
+    </script>
+</body>
+</html>

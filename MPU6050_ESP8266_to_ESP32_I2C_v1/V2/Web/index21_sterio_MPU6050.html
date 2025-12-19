@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Шлем с управлением от MPU6050</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: #000;
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        .viewer-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .viewer-row {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .fragment {
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #666;
+            font-size: 14px;
+            border: 1px solid #333;
+            z-index: 2;
+            overflow: hidden;
+            flex-direction: column;
+            padding: 10px;
+        }
+        
+        .fragment-left {
+            width: 300px;
+            height: 100%;
+            border-right: 1px solid #333;
+        }
+        
+        .fragment-right {
+            width: 300px;
+            height: 100%;
+            border-left: 1px solid #333;
+        }
+        
+        .fragment-center {
+            width: 50px;
+            height: 100%;
+            border-left: 1px solid #333;
+            border-right: 1px solid #333;
+            writing-mode: vertical-lr;
+            text-orientation: mixed;
+        }
+        
+        .main-content {
+            display: flex;
+            flex: 1;
+            height: 100%;
+            position: relative;
+        }
+        
+        .viewer-half {
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+            flex: 1;
+        }
+        
+        #renderCanvasLeft, #renderCanvasRight {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .divider {
+            width: 2px;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.3);
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fdbb2d;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .sensor-data {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin: 2px 0;
+            font-size: 12px;
+            min-width: 120px;
+        }
+        
+        .sensor-value {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .control-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 2px;
+            font-size: 12px;
+        }
+        
+        .control-btn:hover {
+            background: #1976D2;
+        }
+        
+        .sensor-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .viewer-container {
+                flex-direction: column;
+            }
+            
+            .viewer-row {
+                flex-direction: column;
+            }
+            
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .viewer-half {
+                width: 100%;
+                height: 50%;
+            }
+            
+            .fragment-left, .fragment-right {
+                width: 100%;
+                height: 150px;
+            }
+            
+            .fragment-center {
+                width: 100%;
+                height: 30px;
+                writing-mode: horizontal-tb;
+            }
+            
+            .divider {
+                width: 100%;
+                height: 2px;
+                top: 50%;
+                left: 0;
+                transform: translateY(-50%);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Загрузка VR среды...</p>
+        </div>
+        
+        <div class="viewer-row">
+            <!-- Левая панель -->
+            <div class="fragment fragment-left" id="fragmentLeft">
+                <div class="sensor-controls" style="display:none">
+                    <div class="sensor-data">
+                        <div>Pitch: <span class="sensor-value" id="pitchValue">0°</span></div>
+                        <div>Roll: <span class="sensor-value" id="rollValue">0°</span></div>
+                        <div>Yaw: <span class="sensor-value" id="yawValue">0°</span></div>
+                    </div>
+                    <div class="sensor-data">
+                        <div>Относительный Yaw: <span class="sensor-value" id="relativeYawValue">0°</span></div>
+                        <div>Начальный Yaw: <span class="sensor-value" id="initialYawValue">0°</span></div>
+                    </div>
+                    <button class="control-btn" onclick="resetInitialPosition()">Сбросить начальную позицию</button>
+                    <button class="control-btn" onclick="reconnectSensor()">Переподключиться</button>
+                </div>
+            </div>
+            
+            <div class="main-content">
+                <div class="viewer-half" id="leftHalf">
+                    <canvas id="renderCanvasLeft"></canvas>
+                </div>
+                
+                <!-- Центральная панель -->
+                <div class="fragment fragment-center" id="fragmentCenter">
+                    VR
+                </div>
+                
+                <div class="viewer-half" id="rightHalf">
+                    <canvas id="renderCanvasRight"></canvas>
+                </div>
+                <div class="divider"></div>
+            </div>
+            
+            <!-- Правая панель -->
+            <div class="fragment fragment-right" id="fragmentRight">
+                <div class="sensor-data"  style="display:none">
+                    <div>Статус: <span class="sensor-value" id="connectionStatus">Отключен</span></div>
+                    <div>IP: <span class="sensor-value" id="ipValue">-</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script>
+        // Глобальные переменные для управления VR
+        let ws = null;
+        let isConnected = false;
+        let headTrackingEnabled = true;
+        let stereoSeparation = 0.5;
+        let sessionStartTime = Date.now();
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        
+        // Данные с датчика
+        let sensorData = {
+            pitch: 0,
+            roll: 0,
+            yaw: 0,
+            lastUpdate: 0
+        };
+
+        // Относительное положение
+        let relativeOrientation = {
+            initialYaw: 0,     // Начальное значение Yaw при подключении
+            relativeYaw: 0,    // Относительное изменение Yaw
+            pitch: 0,          // Абсолютное значение Pitch
+            roll: 0,           // Абсолютное значение Roll
+            isInitialized: false // Флаг инициализации начальной позиции
+        };
+
+        // Текущая ориентация камеры
+        let currentOrientation = {
+            yaw: 0,
+            pitch: 0,
+            roll: 0
+        };
+
+        // Вспомогательные функции для преобразования углов
+        function degreesToRadians(degrees) {
+            return degrees * (Math.PI / 180);
+        }
+
+        function radiansToDegrees(radians) {
+            return radians * (180 / Math.PI);
+        }
+
+        // Нормализация угла в диапазон [-180, 180]
+        function normalizeAngle(angle) {
+            while (angle > 180) angle -= 360;
+            while (angle < -180) angle += 360;
+            return angle;
+        }
+
+        // Безопасное обновление элемента
+        function safeUpdateElement(id, value) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        }
+
+        // Обновление относительного положения
+        function updateRelativeOrientation(rawPitch, rawRoll, rawYaw) {
+            if (!relativeOrientation.isInitialized) {
+                // Первая инициализация - запоминаем начальные значения
+                relativeOrientation.initialYaw = rawYaw;
+                relativeOrientation.relativeYaw = 0;
+                relativeOrientation.pitch = rawPitch;
+                relativeOrientation.roll = rawRoll;
+                relativeOrientation.isInitialized = true;
+                
+                safeUpdateElement('initialYawValue', rawYaw.toFixed(1) + '°');
+                console.log('Начальная позиция установлена. Yaw:', rawYaw.toFixed(1));
+            } else {
+                // Обновляем относительный Yaw
+                const yawDifference = normalizeAngle(rawYaw - relativeOrientation.initialYaw);
+                relativeOrientation.relativeYaw = yawDifference;
+                
+                // Pitch и Roll используем как абсолютные значения
+                relativeOrientation.pitch = rawPitch;
+                relativeOrientation.roll = rawRoll;
+            }
+            
+            // Обновляем UI
+            safeUpdateElement('pitchValue', relativeOrientation.pitch.toFixed(1) + '°');
+            safeUpdateElement('rollValue', relativeOrientation.roll.toFixed(1) + '°');
+            safeUpdateElement('yawValue', rawYaw.toFixed(1) + '°');
+            safeUpdateElement('relativeYawValue', relativeOrientation.relativeYaw.toFixed(1) + '°');
+        }
+
+        // Сброс начальной позиции
+        function resetInitialPosition() {
+            if (sensorData.lastUpdate > 0) {
+                relativeOrientation.initialYaw = sensorData.yaw;
+                relativeOrientation.relativeYaw = 0;
+                relativeOrientation.isInitialized = true;
+                
+                safeUpdateElement('initialYawValue', sensorData.yaw.toFixed(1) + '°');
+                safeUpdateElement('relativeYawValue', '0°');
+                console.log('Начальная позиция сброшена. Новый Yaw:', sensorData.yaw.toFixed(1));
+            }
+        }
+
+        // Переподключение к датчику
+        function reconnectSensor() {
+            if (ws) {
+                ws.close();
+            }
+            setTimeout(connectSensor, 500);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Получаем элементы DOM
+            const canvasLeft = document.getElementById('renderCanvasLeft');
+            const canvasRight = document.getElementById('renderCanvasRight');
+            const loadingElement = document.getElementById('loading');
+            
+            const fragments = {
+                left: document.getElementById('fragmentLeft'),
+                right: document.getElementById('fragmentRight'),
+                center: document.getElementById('fragmentCenter')
+            };
+            
+            const leftHalf = document.getElementById('leftHalf');
+            const rightHalf = document.getElementById('rightHalf');
+            const mainContent = document.querySelector('.main-content');
+            const viewerRow = document.querySelector('.viewer-row');
+            
+            // Проверяем что все необходимые элементы существуют
+            if (!canvasLeft || !canvasRight || !loadingElement) {
+                console.error('Не найдены необходимые DOM элементы');
+                return;
+            }
+            
+            // Функция для обновления размеров элементов
+            function updateLayout() {
+                // Вычисляем доступную ширину для основного контента
+                let availableWidth = window.innerWidth;
+                let availableHeight = window.innerHeight;
+                
+                if (fragments.left) {
+                    fragments.left.style.width = '150px';
+                }
+                
+                if (fragments.right) {
+                    fragments.right.style.width = '150px';
+                }
+                
+                // Настраиваем основной контент
+                if (viewerRow) viewerRow.style.height = availableHeight + 'px';
+                if (mainContent) mainContent.style.width = (availableWidth - 650) + 'px';
+                
+                // Настраиваем центральный фрагмент и области просмотра
+                const centerWidth = 50;
+                const availableContentWidth = (availableWidth - 650) - centerWidth;
+                
+                if (leftHalf) leftHalf.style.width = (availableContentWidth / 2) + 'px';
+                if (rightHalf) rightHalf.style.width = (availableContentWidth / 2) + 'px';
+                if (fragments.center) {
+                    fragments.center.style.width = centerWidth + 'px';
+                }
+            }
+            
+            // Инициализация layout
+            updateLayout();
+            
+            // Создаем движки Babylon.js для каждого canvas
+            const engineLeft = new BABYLON.Engine(canvasLeft, true);
+            const engineRight = new BABYLON.Engine(canvasRight, true);
+            
+            // Расстояние между глазами (межзрачковое расстояние)
+            const baseEyeDistance = 0.5;
+            // Радиус головы (примерное расстояние от центра головы до глаз)
+            const headRadius = 2.0;
+            
+            // Создаем сцену
+            const createScene = function(engine, isLeftEye) {
+                const scene = new BABYLON.Scene(engine);
+                
+                // Создаем камеру - используем FreeCamera для более гибкого управления
+                const camera = new BABYLON.FreeCamera(
+                    isLeftEye ? "cameraLeft" : "cameraRight", 
+                    new BABYLON.Vector3(0, 0, 0), 
+                    scene
+                );
+                
+                // Устанавливаем начальную позицию
+                camera.position = new BABYLON.Vector3(0, 0, -10);
+                
+                // Отключаем управление мышью/тачем - будем управлять через датчик
+                camera.inputs.clear();
+                
+                // Включаем инерцию для плавности
+                camera.inertia = 0.9;
+                
+                // Создаем свет
+                const light = new BABYLON.HemisphericLight(
+                    "light", 
+                    new BABYLON.Vector3(0, 1, 0), 
+                    scene
+                );
+                light.intensity = 0.3;
+                
+                // Создаем сферу для панорамы
+                const sphere = BABYLON.MeshBuilder.CreateSphere(
+                    "sphere", 
+                    { diameter: 100, segments: 64 }, 
+                    scene
+                );
+                
+                // Разворачиваем сферу внутрь
+                sphere.flipFaces(true);
+                
+                // Создаем материал для сферы
+                const material = new BABYLON.StandardMaterial("panoramaMaterial", scene);
+                
+                // Загружаем текстуру
+                material.diffuseTexture = new BABYLON.Texture(
+                    "PIC_20250412_131142.jpg", 
+                    scene
+                );
+                
+                // Настраиваем материал
+                material.diffuseTexture.uScale = 1;
+                material.diffuseTexture.vScale = -1;
+                material.backFaceCulling = false;
+                material.specularColor = new BABYLON.Color3(0, 0, 0);
+                material.emissiveColor = new BABYLON.Color3(1, 1, 1);
+                
+                // Применяем материал к сфере
+                sphere.material = material;
+                
+                return {scene, camera, sphere};
+            };
+            
+            // Создаем сцены для левого и правого глаза
+            const sceneLeft = createScene(engineLeft, true);
+            const sceneRight = createScene(engineRight, false);
+            
+            // Функция обновления камер на основе данных датчика
+            function updateCameraFromSensor() {
+                if (!headTrackingEnabled || !relativeOrientation.isInitialized) return;
+                
+                const now = Date.now();
+                if (now - sensorData.lastUpdate > 1000) return; // Данные устарели
+                
+                // Используем относительный Yaw и абсолютные Pitch/Roll
+                const relativeYaw = relativeOrientation.relativeYaw;
+                const absolutePitch = relativeOrientation.pitch;
+                const absoluteRoll = relativeOrientation.roll;
+                
+                // Преобразуем углы из градусов в радианы
+                const pitchRad = degreesToRadians(absolutePitch);
+                const yawRad = degreesToRadians(relativeYaw);
+                const rollRad = degreesToRadians(absoluteRoll);
+                
+                // Создаем кватернион для вращения головы (Yaw и Pitch)
+                const headRotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(
+                    -yawRad,   // Yaw - вращение вокруг Y оси (относительное)
+                    -pitchRad, // Pitch - вращение вокруг X оси (абсолютное)
+                    0          // Roll пока не применяем к вращению головы
+                );
+                
+                // Применяем стерео разделение с учетом наклона головы (Roll)
+                const baseEyeOffset = baseEyeDistance * stereoSeparation;
+                
+                // Вычисляем смещение глаз при наклоне головы (Roll)
+                // При наклоне головы глаза движутся по дуге окружности
+                const rollCos = Math.cos(rollRad);
+                const rollSin = Math.sin(rollRad);
+                
+                // Смещение по X и Y в зависимости от Roll
+                const eyeOffsetX = baseEyeOffset * rollCos;
+                const eyeOffsetY = baseEyeOffset * rollSin;
+                
+                // Создаем кватернион для наклона головы (Roll)
+                const rollQuaternion = BABYLON.Quaternion.RotationAxis(
+                    new BABYLON.Vector3(0, 0, 1), // Ось Z
+                    -rollRad
+                );
+                
+                // Комбинируем вращения: сначала Yaw/Pitch, потом Roll
+                const finalRotationQuaternion = headRotationQuaternion.multiply(rollQuaternion);
+                
+                // Обновляем позиции и вращения камер
+                if (headTrackingEnabled) {
+                    // Для левой камеры
+                    sceneLeft.camera.rotationQuaternion = finalRotationQuaternion.clone();
+                    sceneLeft.camera.position.x = -eyeOffsetX;
+                    sceneLeft.camera.position.y = -eyeOffsetY;
+                    
+                    // Для правой камеры
+                    sceneRight.camera.rotationQuaternion = finalRotationQuaternion.clone();
+                    sceneRight.camera.position.x = eyeOffsetX;
+                    sceneRight.camera.position.y = eyeOffsetY;
+                }
+                
+                // Сохраняем текущую ориентацию
+                currentOrientation.yaw = relativeYaw;
+                currentOrientation.pitch = absolutePitch;
+                currentOrientation.roll = absoluteRoll;
+            }
+            
+            // Скрываем индикатор загрузки после полной загрузки сцен
+            let scenesLoaded = 0;
+            const totalScenes = 2;
+            
+            const checkScenesLoaded = function() {
+                scenesLoaded++;
+                if (scenesLoaded === totalScenes) {
+                    setTimeout(() => {
+                        if (loadingElement) {
+                            loadingElement.style.display = 'none';
+                        }
+                    }, 500);
+                }
+            };
+            
+            sceneLeft.scene.executeWhenReady(checkScenesLoaded);
+            sceneRight.scene.executeWhenReady(checkScenesLoaded);
+            
+            // Обработка изменения размера окна
+            window.addEventListener('resize', function() {
+                updateLayout();
+                engineLeft.resize();
+                engineRight.resize();
+            });
+            
+            // Запускаем рендеринг для обеих сцен
+            engineLeft.runRenderLoop(function() {
+                updateCameraFromSensor();
+                sceneLeft.scene.render();
+                frameCount++;
+                updateFPS();
+            });
+            
+            engineRight.runRenderLoop(function() {
+                updateCameraFromSensor();
+                sceneRight.scene.render();
+            });
+        });
+        
+        // Функции управления датчиком MPU6050
+        function connectSensor() {
+            const userIp = prompt('Введите IP адрес ESP8266 с MPU6050:', '192.168.31.110');
+            if (!userIp) return;
+            
+            const wsUrl = `ws://${userIp}:81`;
+            
+            safeUpdateElement('connectionStatus', 'Подключение...');
+            safeUpdateElement('ipValue', userIp);
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    isConnected = true;
+                    safeUpdateElement('connectionStatus', 'Подключен');
+                    
+                    // Сбрасываем инициализацию при новом подключении
+                    relativeOrientation.isInitialized = false;
+                    console.log('WebSocket подключен, ожидаем данные для инициализации...');
+                };
+                
+                ws.onclose = function(event) {
+                    isConnected = false;
+                    safeUpdateElement('connectionStatus', 'Отключен');
+                    relativeOrientation.isInitialized = false;
+                };
+                
+                ws.onerror = function(error) {
+                    safeUpdateElement('connectionStatus', 'Ошибка');
+                    console.error('WebSocket error:', error);
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleSensorMessage(data);
+                    } catch (e) {
+                        console.error('Ошибка парсинга:', e);
+                    }
+                };
+                
+            } catch (error) {
+                safeUpdateElement('connectionStatus', 'Ошибка');
+                console.error('Ошибка создания WebSocket:', error);
+            }
+        }
+        
+        function handleSensorMessage(data) {
+            switch(data.type) {
+                case 'sensorData':
+                    updateSensorData(data);
+                    break;
+            }
+        }
+        
+        function updateSensorData(data) {
+            sensorData = {
+                pitch: data.pitch || 0,
+                roll: data.roll || 0,
+                yaw: data.yaw || 0,
+                lastUpdate: Date.now()
+            };
+            
+            // Обновляем относительное положение
+            updateRelativeOrientation(sensorData.pitch, sensorData.roll, sensorData.yaw);
+        }
+        
+        function updateFPS() {
+            const now = Date.now();
+            if (now - lastFpsUpdate >= 1000) {
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+        }
+        
+        // Автоматическое подключение при загрузке
+        setTimeout(connectSensor, 1000);
+    </script>
+</body>
+</html>
